@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pamphleteer</title>
+  <meta name="description" content="Collage a book in two languages into one side-by-side page. Everything runs in your browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="assets/favicon-96x96.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/android-chrome-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/android-chrome-512x512.png">
+  <meta name="theme-color" content="#111111">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Pamphleteer">
+  <meta property="og:description" content="Books and articles set side by side in two languages.">
+  <meta property="og:url" content="https://sssyd1410.github.io/Pamphleteer/">
+  <meta property="og:image" content="https://sssyd1410.github.io/Pamphleteer/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Pamphleteer — two tongues, one page">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://sssyd1410.github.io/Pamphleteer/assets/twitter-image.png">
+  <meta name="twitter:image:alt" content="Pamphleteer — two tongues, one page">
+</head>
+<body>
+  <header class="masthead">
+    <p class="masthead-rule">Two tongues · One page · Est. MMXXVI</p>
+    <h1><a href="./" class="wordmark">Pamphleteer</a></h1>
+    <p class="masthead-rule">A press for parallel texts</p>
+  </header>
+
+  <main id="setup" class="setup">
+    <p class="lede">Lay a book beside its translation. Upload the same work in two languages and Pamphleteer sets them in facing columns, chapter by chapter, paragraph by paragraph. Files are read in your browser and never uploaded.</p>
+
+    <div class="sides">
+      <section class="side" data-side="left">
+        <h2>Original</h2>
+        <label class="drop">
+          <input type="file" accept="" hidden>
+          <span class="drop-title">Choose a file</span>
+          <span class="drop-hint">or drop it here</span>
+        </label>
+        <button type="button" class="link paste-toggle">or paste text</button>
+        <textarea class="paste" hidden placeholder="Paste text here…"></textarea>
+        <div class="meta">
+          <label>Language <select class="lang"></select></label>
+          <span class="info"></span>
+        </div>
+      </section>
+
+      <div class="divider" aria-hidden="true">&amp;</div>
+
+      <section class="side" data-side="right">
+        <h2>Translation</h2>
+        <label class="drop">
+          <input type="file" accept="" hidden>
+          <span class="drop-title">Choose a file</span>
+          <span class="drop-hint">or drop it here</span>
+        </label>
+        <button type="button" class="link paste-toggle">or paste text</button>
+        <textarea class="paste" hidden placeholder="Paste text here…"></textarea>
+        <div class="meta">
+          <label>Language <select class="lang"></select></label>
+          <span class="info"></span>
+        </div>
+      </section>
+    </div>
+
+    <section id="translate-opts" class="translate-opts" hidden>
+      <h3>No translation on hand?</h3>
+      <p>Leave the second side empty and Pamphleteer will translate short texts (up to <span id="limit"></span> characters). Longer works should be uploaded in both languages.</p>
+      <div class="opts-row">
+        <label>Engine
+          <select id="engine">
+            <option value="browser">This browser (on-device, free)</option>
+            <option value="claude">Claude (your API key)</option>
+            <option value="mymemory">MyMemory (free, ~5,000 chars/day)</option>
+          </select>
+        </label>
+        <label id="key-wrap" hidden>Anthropic API key
+          <input id="api-key" type="password" autocomplete="off" placeholder="sk-ant-…">
+        </label>
+      </div>
+      <p class="fine" id="engine-note"></p>
+    </section>
+
+    <div class="actions">
+      <button id="go" class="press" disabled>Set in type</button>
+      <p id="status" class="status" role="status"></p>
+    </div>
+
+    <p class="sample">Try it with a public-domain book: <button type="button" class="link" id="sample">Alice’s Adventures in Wonderland, English &amp; French</button></p>
+    <p class="fine formats">Accepts PDF, EPUB, DOCX, HTML, FB2, Markdown, SRT and plain text.</p>
+  </main>
+
+  <div id="reader" class="reader" hidden>
+    <nav class="toolbar">
+      <button id="back" class="link">← New</button>
+      <span id="titles" class="titles"></span>
+      <span class="tools">
+        <button id="smaller" class="tool" title="Smaller type">A−</button>
+        <button id="larger" class="tool" title="Larger type">A+</button>
+        <button id="swap" class="tool" title="Swap columns">⇄</button>
+        <select id="view" class="tool" title="Columns">
+          <option value="both">Both</option>
+          <option value="left">Left only</option>
+          <option value="right">Right only</option>
+        </select>
+        <button id="download" class="tool" title="Save as a web page">Save</button>
+      </span>
+      <div id="progress" class="progress"></div>
+    </nav>
+    <article id="pages" class="pages"></article>
+    <div id="sentinel" class="sentinel"></div>
+    <p class="colophon">Set by Pamphleteer.</p>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
