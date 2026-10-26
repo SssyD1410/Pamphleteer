@@ -102,10 +102,20 @@
         <button id="download" class="tool" title="Save as a web page">HTML</button>
         <button id="pdf" class="tool" title="Save the whole parallel text as a PDF">PDF</button>
       </span>
+      <div class="pager" hidden>
+        <button class="tool page-prev" title="Previous page">‹</button>
+        <select class="tool page-pick" title="Go to page"></select>
+        <button class="tool page-next" title="Next page">›</button>
+      </div>
       <div id="progress" class="progress"></div>
     </nav>
     <article id="pages" class="pages"></article>
     <div id="sentinel" class="sentinel"></div>
+    <nav class="pager pager-foot" hidden>
+      <button class="link page-prev">‹ Previous</button>
+      <span class="page-of"></span>
+      <button class="link page-next">Next ›</button>
+    </nav>
     <p class="colophon">Set by Pamphleteer. Hover a word for a gloss; click it for the dictionary.</p>
   </div>
 

@@ -240,8 +240,38 @@ function rowHtml(row, k) {
   return `<div class="row${chapter}">${cols.join('')}</div>`;
 }
 
+// Big books are split into pages: a new page at every chapter, and long chapters are
+// cut at a row boundary once a page holds about PAGE_CHARS characters per language.
+const PAGE_CHARS = 30000;
+
+function paginate(rows, ncols) {
+  const size = (row) => row.reduce((s, col) => s + col.reduce((t, p) => t + p.t.length, 0), 0) / ncols;
+  const pages = [];
+  let start = 0, chars = 0;
+  rows.forEach((row, k) => {
+    const isChapter = k > 0 && row.some((col) => col[0]?.h);
+    if (k > start && (isChapter || chars + size(row) > PAGE_CHARS)) {
+      pages.push([start, k]);
+      start = k;
+      chars = 0;
+    }
+    chars += size(row);
+  });
+  pages.push([start, rows.length]);
+  // Small texts stay on one page.
+  const total = rows.reduce((s, r) => s + size(r), 0);
+  return total <= PAGE_CHARS * 1.5 ? [[0, rows.length]] : pages;
+}
+
+function pageLabel(c, [start], i) {
+  const head = c.rows[start].map((col) => col[0]).find((p) => p?.h);
+  const name = head ? head.t.replace(/\s*\n\s*/g, ' — ') : (i ? `continued` : 'Opening');
+  return `${i + 1}. ${name}`.slice(0, 80);
+}
+
 function openReader(rows, columns) {
-  current = { rows, columns, order: columns.map((_, k) => k), hidden: new Set(), shown: 0 };
+  current = { rows, columns, order: columns.map((_, k) => k), hidden: new Set(), shown: 0, page: 0 };
+  current.pages = paginate(rows, columns.length);
   $('#setup').hidden = true;
   $('.masthead').hidden = true;
   $('#reader').hidden = false;
@@ -250,12 +280,34 @@ function openReader(rows, columns) {
   $('#gloss-lang').value = columns[0].lang;
   $('#col-toggles').innerHTML = columns.map((c, k) => `<button class="tool chip on" data-k="${k}" title="${esc(c.title)}">${c.lang.toUpperCase()}</button>`).join('');
   $('#rotate').hidden = columns.length < 2;
-  rerender();
-  window.scrollTo(0, 0);
+  const many = current.pages.length > 1;
+  document.querySelectorAll('.pager').forEach((el) => { el.hidden = !many; });
+  $('.page-pick').innerHTML = current.pages.map((pg, i) => `<option value="${i}">${esc(pageLabel(current, pg, i))}</option>`).join('');
   observer?.disconnect();
   observer = new IntersectionObserver((entries) => entries[0].isIntersecting && fill(), { rootMargin: '1500px' });
   observer.observe($('#sentinel'));
+  goToPage(+(location.hash.match(/^#p=(\d+)/)?.[1] || 1) - 1, false);
 }
+
+function goToPage(i, push = true) {
+  const c = current;
+  c.page = Math.max(0, Math.min(c.pages.length - 1, i || 0));
+  if (c.pages.length > 1) {
+    const hash = `#p=${c.page + 1}`;
+    if (push && location.hash !== hash) history.pushState(null, '', hash);
+    else if (!push) history.replaceState(null, '', hash);
+  }
+  $('.page-pick').value = c.page;
+  document.querySelectorAll('.page-prev').forEach((b) => { b.disabled = c.page === 0; });
+  document.querySelectorAll('.page-next').forEach((b) => { b.disabled = c.page === c.pages.length - 1; });
+  const next = c.pages[c.page + 1];
+  $('.page-of').textContent = `Page ${c.page + 1} of ${c.pages.length}` + (next ? ` · next: ${pageLabel(c, next, c.page + 1).replace(/^\d+\.\s*/, '')}` : '');
+  $('#pages').innerHTML = '';
+  window.scrollTo(0, 0);
+  rerender();
+}
+
+const pageRange = () => current.pages[current.page];
 
 // Redraw after a column change, keeping the reader near the same row.
 function rerender() {
@@ -266,33 +318,48 @@ function rerender() {
   $('#pages').style.setProperty('--cols', shown.length);
   $('#pages').dataset.cols = shown.length;
   $('#pages').innerHTML = '';
-  c.shown = 0;
-  while (c.shown < Math.max(anchor + 1, 1)) more();
+  c.shown = pageRange()[0];
+  while (c.shown < pageRange()[0] + Math.max(anchor + 1, 1)) more();
   fill();
   if (anchor > 0) document.querySelectorAll('#pages .row')[anchor].scrollIntoView();
 }
 
 function fill() {
-  while (current && current.shown < current.rows.length && $('#sentinel').getBoundingClientRect().top < innerHeight + 1500) more();
+  while (current && current.shown < pageRange()[1] && $('#sentinel').getBoundingClientRect().top < innerHeight + 1500) more();
 }
 
-function more() {
+function more(end = pageRange()[1]) {
   const c = current;
-  if (!c || c.shown >= c.rows.length) return;
-  const end = Math.min(c.rows.length, c.shown + BATCH);
+  if (!c || c.shown >= end) return;
+  const stop = Math.min(end, c.shown + BATCH);
   let html = '';
-  for (let k = c.shown; k < end; k++) html += rowHtml(c.rows[k], k);
+  for (let k = c.shown; k < stop; k++) html += rowHtml(c.rows[k], k);
   $('#pages').insertAdjacentHTML('beforeend', html);
-  c.shown = end;
+  c.shown = stop;
 }
+
+for (const b of document.querySelectorAll('.page-prev')) b.addEventListener('click', () => goToPage(current.page - 1));
+for (const b of document.querySelectorAll('.page-next')) b.addEventListener('click', () => goToPage(current.page + 1));
+$('.page-pick').addEventListener('change', (e) => goToPage(+e.target.value));
+addEventListener('popstate', () => {
+  if (!current) return;
+  const p = +(location.hash.match(/^#p=(\d+)/)?.[1] || 1) - 1;
+  if (p !== current.page) goToPage(p, false);
+});
+addEventListener('keydown', (e) => {
+  if (!current || e.target.closest('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'ArrowRight' && current.page < current.pages.length - 1) goToPage(current.page + 1);
+  if (e.key === 'ArrowLeft' && current.page > 0) goToPage(current.page - 1);
+});
 
 window.addEventListener('scroll', () => {
   if (!current) return;
   fill();
+  const [a, b] = pageRange();
   const max = document.documentElement.scrollHeight - innerHeight;
-  // Progress is measured against all rows, not just the ones rendered so far.
-  const frac = max > 0 ? (scrollY / max) * (current.shown / current.rows.length) : 0;
-  $('#progress').style.width = (frac * 100).toFixed(2) + '%';
+  // Progress through the whole book: rows before this page plus the part of this page read.
+  const within = max > 0 ? (scrollY / max) * ((current.shown - a) / (b - a)) : 0;
+  $('#progress').style.width = (((a + within * (b - a)) / current.rows.length) * 100).toFixed(2) + '%';
 }, { passive: true });
 
 attachLookup({
@@ -347,6 +414,7 @@ $('#col-toggles').addEventListener('click', (e) => {
 $('#back').addEventListener('click', () => {
   observer?.disconnect();
   current = null;
+  history.replaceState(null, '', location.pathname + location.search);
   $('#pages').innerHTML = '';
   $('#dict').hidden = true;
   $('#reader').hidden = true;
@@ -375,17 +443,25 @@ $('#download').addEventListener('click', async () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 });
 
-// PDF: lay out every row, then hand the page to the browser's print engine ("Save as PDF").
-// It typesets real text with the chosen font, so the PDF stays searchable and small.
+// PDF: lay out every row of every page in a print-only copy, then hand it to the browser's
+// print engine ("Save as PDF"). Real text in the chosen font keeps the PDF searchable and small.
 $('#pdf').addEventListener('click', async () => {
   const c = current;
   if (!c) return;
   const btn = $('#pdf');
   btn.textContent = 'Setting…';
   await new Promise((r) => setTimeout(r, 30));
-  while (c.shown < c.rows.length) more();
-  await document.fonts.ready;
   const n = shownColumns().length;
+  const book = document.createElement('article');
+  book.id = 'print-book';
+  book.className = 'pages';
+  book.dataset.cols = n;
+  book.style.setProperty('--cols', n);
+  const parts = [];
+  for (let k = 0; k < c.rows.length; k++) parts.push(rowHtml(c.rows[k], k));
+  book.innerHTML = parts.join('');
+  $('#pages').after(book);
+  await document.fonts.ready;
   const page = document.createElement('style');
   page.id = 'page-size';
   page.textContent = `@page { size: A4 ${n >= 3 ? 'landscape' : 'portrait'}; margin: 16mm 14mm; }`;
@@ -396,4 +472,5 @@ $('#pdf').addEventListener('click', async () => {
   print();
   document.title = before;
   page.remove();
+  book.remove();
 });

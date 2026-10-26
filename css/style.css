@@ -259,6 +259,29 @@ button.tool:hover { background: var(--ink); color: var(--paper); }
 }
 .pages .col { cursor: text; }
 
+.toolbar { flex-wrap: wrap; }
+.toolbar .pager {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: -2px;
+}
+.toolbar .pager[hidden], .pager-foot[hidden] { display: none; }
+.page-pick { max-width: min(420px, 60vw); font-style: italic; }
+.pager-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  max-width: 900px;
+  margin: 48px auto 0;
+  padding: 14px 16px 0;
+  border-top: 3px double var(--ink);
+  font-size: 18px;
+}
+.pager-foot .page-of { font-style: italic; color: var(--faint); font-size: 15px; }
+.pager-foot button:disabled { visibility: hidden; }
+
 .col-toggles { display: inline-flex; gap: 3px; }
 .chip { min-width: 0; font: 400 13px/1.5 var(--serif); letter-spacing: 0.06em; }
 .chip:not(.on) { color: var(--hair); border-color: var(--hair); text-decoration: line-through; }
@@ -329,6 +352,7 @@ select.tool { padding: 3px 4px; border: 1px solid var(--ink); }
 .dict-links a { color: inherit; }
 
 .sentinel { height: 1px; }
+@media screen { #print-book { display: none; } }
 .colophon {
   margin: 60px 0 80px;
   text-align: center;
@@ -363,7 +387,8 @@ select.tool { padding: 3px 4px; border: 1px solid var(--ink); }
 /* ---------- print / PDF ---------- */
 @media print {
   body { --size: 10.5pt !important; background: #fff; }
-  .masthead, .setup, .toolbar, .gloss, .dict, .sentinel { display: none !important; }
+  .masthead, .setup, .toolbar, .gloss, .dict, .sentinel, .pager { display: none !important; }
+  .reader:has(#print-book) #pages { display: none; }
   .reader { display: block !important; }
   .pages { max-width: none; padding: 0; }
   .pages[data-cols="3"], .pages[data-cols="4"] { font-size: 9.5pt; }

@@ -13,7 +13,7 @@ Pamphleteer lays a book or article beside its translations. Upload the same work
 - **Cheap on big books.** Parsers load only when a format needs them (pdf.js, JSZip, mammoth). Alignment is two cheap passes:
   1. Each text is aligned to the first one. Chapters are matched by their numbers (*Chapter IV* ↔ *Chapitre IV*). Tables of contents are skipped.
   2. Inside each chapter, paragraphs are paired by a banded Gale–Church style alignment on paragraph length, allowing 1–1, 1–2, 2–1, 2–2 and 1–3 groupings. Very long texts without chapters fall back to a single linear pass.
-  The reader adds rows as you scroll, so a 1,000-page book doesn't render all at once.
+  Long works are split into pages, one per chapter, and long chapters are cut at about 30,000 characters per language. Use the page picker, the ‹ › buttons or the arrow keys; the browser's Back button works too. Each page also adds rows as you scroll.
 - **Short texts can be translated** (up to 60,000 characters) when you only have one language:
   - *This browser:* Chrome's on-device Translator API. Free, and nothing leaves the machine.
   - *Claude:* uses your own Anthropic API key, called straight from the page. The key is never stored.
@@ -26,7 +26,7 @@ Pamphleteer lays a book or article beside its translations. Upload the same work
 - **Typefaces:** EB Garamond, Cormorant, Libre Baskerville, Crimson Pro, Old Standard, Noto Serif (with Chinese and Japanese) or the system serif. Your choice is remembered.
 - **Columns** can be hidden, shown or rotated from the toolbar.
 - **HTML** downloads the parallel text as one self-contained web page.
-- **PDF** lays out the entire book and opens the print dialog; choose *Save as PDF*. Pages are A4, portrait for 2 columns and landscape for 3–4, with each chapter on a new page. The text stays selectable and searchable.
+- **PDF** lays out the entire book, every page, and opens the print dialog; choose *Save as PDF*. Pages are A4, portrait for 2 columns and landscape for 3–4, with each chapter on a new page. The text stays selectable and searchable.
 
 ## Try it
 
