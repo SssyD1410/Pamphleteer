@@ -21,10 +21,11 @@ function loadScript(src) {
 
 const HEADING_RE = new RegExp(
   '^(?:chapter|chapitre|kapitel|cap[ií]tulo|capitolo|hoofdstuk|rozdzia[łl]|kapitola|глава|book|livre|buch|libro|part|partie|teil|parte|section|act|acte|akt|scene|sc[eè]ne|canto|letter|lettre|brief)\\b[\\s.:]*\\S.{0,70}$' +
+  '|^[\\p{L}\\d]+\\.?\\s+(?:kapitel|chapter|chapitre|cap[ií]tulo|capitolo|buch|book|livre|teil|part|partie|глава)\\.?$' +
   '|^第\\s*[0-9一二三四五六七八九十百千零〇]+\\s*[章回节節卷部]' +
   '|^[IVXLC]{1,7}\\.?$' +
   '|^#{1,6}\\s+\\S',
-  'i'
+  'iu'
 );
 
 export function isHeadingLine(s) {
@@ -52,7 +53,7 @@ export function paragraphsFromText(text) {
     // Short-line blocks (verse, addresses) keep their line breaks; prose is unwrapped.
     const t = lines.length > 2 && avg < 42
       ? lines.join('\n')
-      : lines.join(' ').replace(/(\w)- (\w)/g, '$1$2');
+      : lines.join(' ');
     const md = t.match(/^#{1,6}\s+(.*)$/);
     if (md) out.push({ t: md[1], h: 1 });
     // A heading may carry its title on the next line or two ("CHAPTER I." / "Down the Rabbit-Hole").

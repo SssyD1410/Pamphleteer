@@ -1,14 +1,38 @@
 import { ACCEPT, extract, paragraphsFromText, charCount } from './extract.js';
-import { collage, pairOneToOne } from './align.js';
+import { collageMany } from './align.js';
 import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate } from './translate.js';
+import { attachLookup, esc } from './dict.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const BATCH = 120; // rows added to the page per scroll step
+const MAX_SIDES = 4;
+const SIDE_NAMES = ['Original', 'Translation', 'Third language', 'Fourth language'];
+const DEFAULT_LANGS = ['en', 'fr', 'de', 'es'];
 
-const sides = {};
-for (const el of document.querySelectorAll('.side')) {
-  const name = el.dataset.side;
-  sides[name] = {
+const FONTS = {
+  garamond: { label: 'EB Garamond', css: "'EB Garamond'", url: null },
+  cormorant: { label: 'Cormorant', css: "'Cormorant Garamond'", url: 'Cormorant+Garamond:ital,wght@0,400;0,600;1,400' },
+  baskerville: { label: 'Libre Baskerville', css: "'Libre Baskerville'", url: 'Libre+Baskerville:ital,wght@0,400;0,700;1,400' },
+  crimson: { label: 'Crimson Pro', css: "'Crimson Pro'", url: 'Crimson+Pro:ital,wght@0,400;0,600;1,400' },
+  oldstandard: { label: 'Old Standard', css: "'Old Standard TT'", url: 'Old+Standard+TT:ital,wght@0,400;0,700;1,400' },
+  noto: { label: 'Noto Serif (all scripts)', css: "'Noto Serif', 'Noto Serif SC', 'Noto Serif JP'", url: 'Noto+Serif:ital,wght@0,400;0,600;1,400&family=Noto+Serif+SC:wght@400;600&family=Noto+Serif+JP:wght@400;600' },
+  system: { label: 'System serif', css: 'Georgia, "Times New Roman"', url: null },
+};
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
+};
+
+// ---------- setup view: 2 to 4 sides ----------
+
+const sides = [];
+const langOptions = Object.entries(LANGUAGES).map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
+
+function addSide() {
+  if (sides.length >= MAX_SIDES) return;
+  const el = $('#side-template').content.firstElementChild.cloneNode(true);
+  const s = {
     el,
     input: $('input[type=file]', el),
     drop: $('.drop', el),
@@ -19,16 +43,48 @@ for (const el of document.querySelectorAll('.side')) {
     paras: null,
     busy: false,
   };
-}
-
-// ---------- setup view ----------
-
-const langOptions = Object.entries(LANGUAGES).map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
-for (const s of Object.values(sides)) {
   s.lang.innerHTML = langOptions;
+  s.lang.value = DEFAULT_LANGS.find((l) => !sides.some((o) => o.lang.value === l)) || 'en';
   s.input.accept = ACCEPT;
+  $('#sides').appendChild(el);
+  sides.push(s);
+
+  s.input.addEventListener('change', () => s.input.files[0] && load(s, s.input.files[0]));
+  s.drop.addEventListener('dragover', (e) => { e.preventDefault(); s.drop.classList.add('over'); });
+  s.drop.addEventListener('dragleave', () => s.drop.classList.remove('over'));
+  s.drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    s.drop.classList.remove('over');
+    if (e.dataTransfer.files[0]) load(s, e.dataTransfer.files[0]);
+  });
+  $('.paste-toggle', el).addEventListener('click', () => {
+    s.paste.hidden = !s.paste.hidden;
+    if (!s.paste.hidden) s.paste.focus();
+  });
+  let timer;
+  s.paste.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => loadPasted(s), 250); });
+  s.lang.addEventListener('change', refresh);
+  $('.remove-side', el).addEventListener('click', () => {
+    sides.splice(sides.indexOf(s), 1);
+    el.remove();
+    relabel();
+  });
+  relabel();
 }
-sides.right.lang.value = 'fr';
+
+function relabel() {
+  sides.forEach((s, k) => {
+    $('.side-name', s.el).textContent = SIDE_NAMES[k];
+    $('.remove-side', s.el).hidden = k < 2;
+  });
+  $('#sides').dataset.count = sides.length;
+  $('#add-side').hidden = sides.length >= MAX_SIDES;
+  refresh();
+}
+
+addSide();
+addSide();
+$('#add-side').addEventListener('click', addSide);
 $('#limit').textContent = TRANSLATE_LIMIT.toLocaleString();
 
 const status = (msg, isError = false) => {
@@ -39,8 +95,7 @@ const status = (msg, isError = false) => {
 
 const fmt = (n) => n.toLocaleString();
 
-async function load(side, file) {
-  const s = sides[side];
+async function load(s, file) {
   s.busy = true;
   s.paras = null;
   s.title = file.name.replace(/\.[^.]+$/, '');
@@ -65,11 +120,10 @@ async function load(side, file) {
   refresh();
 }
 
-function loadPasted(side) {
-  const s = sides[side];
+function loadPasted(s) {
   const text = s.paste.value.trim();
   s.paras = text ? paragraphsFromText(text) : null;
-  s.title = text ? (side === 'left' ? 'Original' : 'Translation') : '';
+  s.title = text ? SIDE_NAMES[sides.indexOf(s)] : '';
   if (s.paras) {
     s.lang.value = guessLanguage(text);
     s.info.textContent = `${fmt(s.paras.length)} paragraphs · ${fmt(text.length)} characters`;
@@ -78,15 +132,18 @@ function loadPasted(side) {
 }
 
 function refresh() {
-  const L = sides.left, R = sides.right;
-  const translating = L.paras && !R.paras && !R.busy;
+  if (!sides.length) return;
+  const first = sides[0];
+  const busy = sides.some((s) => s.busy);
+  const empty = sides.slice(1).filter((s) => !s.paras);
+  const translating = first.paras && empty.length && !busy;
   $('#translate-opts').hidden = !translating;
-  let ok = !!L.paras && !L.busy && !R.busy;
+  let ok = !!first.paras && !busy;
   if (translating) {
-    const n = charCount(L.paras);
+    const n = charCount(first.paras);
     if (n > TRANSLATE_LIMIT) {
       ok = false;
-      status(`This text has ${fmt(n)} characters — too long to translate here. Upload its translation on the right.`);
+      status(`The first text has ${fmt(n)} characters — too long to translate here. Upload its translations instead.`);
     } else if ($('#engine').value === 'claude' && !$('#api-key').value.trim()) {
       ok = false;
     }
@@ -113,53 +170,49 @@ $('#engine').addEventListener('change', updateEngineNote);
 $('#api-key').addEventListener('input', refresh);
 updateEngineNote();
 
-for (const [name, s] of Object.entries(sides)) {
-  s.input.addEventListener('change', () => s.input.files[0] && load(name, s.input.files[0]));
-  s.drop.addEventListener('dragover', (e) => { e.preventDefault(); s.drop.classList.add('over'); });
-  s.drop.addEventListener('dragleave', () => s.drop.classList.remove('over'));
-  s.drop.addEventListener('drop', (e) => {
-    e.preventDefault();
-    s.drop.classList.remove('over');
-    if (e.dataTransfer.files[0]) load(name, e.dataTransfer.files[0]);
+const SAMPLES = {
+  en: ['alice-en.txt', 'Alice’s Adventures in Wonderland'],
+  fr: ['alice-fr.txt', 'Aventures d’Alice au pays des merveilles'],
+  de: ['alice-de.txt', 'Alice’s Abenteuer im Wunderland'],
+};
+for (const btn of document.querySelectorAll('[data-sample]')) {
+  btn.addEventListener('click', async () => {
+    const langs = btn.dataset.sample.split(',');
+    while (sides.length < langs.length) addSide();
+    while (sides.length > langs.length) { sides.at(-1).el.remove(); sides.pop(); }
+    relabel();
+    status('Fetching the sample…');
+    await Promise.all(langs.map(async (l, k) => {
+      const blob = await fetch('samples/' + SAMPLES[l][0]).then((r) => r.blob());
+      await load(sides[k], new File([blob], SAMPLES[l][1] + '.txt'));
+    }));
+    if (sides.every((s) => s.paras)) $('#go').click();
   });
-  $('.paste-toggle', s.el).addEventListener('click', () => {
-    s.paste.hidden = !s.paste.hidden;
-    if (!s.paste.hidden) s.paste.focus();
-  });
-  let timer;
-  s.paste.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => loadPasted(name), 250); });
 }
 
-$('#sample').addEventListener('click', async () => {
-  status('Fetching the sample…');
-  const files = await Promise.all(['alice-en.txt', 'alice-fr.txt'].map(async (f, i) => {
-    const blob = await fetch('samples/' + f).then((r) => r.blob());
-    return new File([blob], i ? 'Aventures d’Alice au pays des merveilles.txt' : 'Alice’s Adventures in Wonderland.txt');
-  }));
-  await Promise.all([load('left', files[0]), load('right', files[1])]);
-  if (sides.left.paras && sides.right.paras) $('#go').click();
-});
-
 $('#go').addEventListener('click', async () => {
-  const L = sides.left, R = sides.right;
+  const [first, ...rest] = sides;
   $('#go').disabled = true;
   try {
-    let result, right = R, rightLang = R.lang.value;
-    if (!R.paras) {
-      const to = R.lang.value;
+    const others = [];
+    for (const s of rest) {
+      if (s.paras) {
+        others.push({ paras: s.paras, title: s.title, lang: s.lang.value });
+        continue;
+      }
+      const to = s.lang.value;
       status(`Translating into ${LANGUAGES[to]}…`);
-      const translated = await translate($('#engine').value, L.paras, L.lang.value, to, {
+      const paras = await translate($('#engine').value, first.paras, first.lang.value, to, {
         apiKey: $('#api-key').value.trim(),
-        progress: (msg, frac) => status(msg + (frac ? ` — ${Math.round(frac * 100)}%` : '')),
+        progress: (msg, frac) => status(`${LANGUAGES[to]}: ${msg}` + (frac ? ` — ${Math.round(frac * 100)}%` : '')),
       });
-      right = { title: `${LANGUAGES[to]} translation`, paras: translated };
-      result = pairOneToOne(L.paras, translated);
-    } else {
-      status('Collaging…');
-      result = collage(L.paras, R.paras);
+      others.push({ paras, title: `${LANGUAGES[to]} translation`, lang: to, exact: true });
     }
+    status('Collaging…');
+    await new Promise((r) => setTimeout(r)); // let the status paint before the alignment pass
+    const { rows } = collageMany(first.paras, others);
     status('');
-    openReader(result.rows, { title: L.title, lang: L.lang.value }, { title: right.title, lang: rightLang });
+    openReader(rows, [{ title: first.title, lang: first.lang.value }, ...others.map(({ title, lang }) => ({ title, lang }))]);
   } catch (err) {
     status(err.message || String(err), true);
   }
@@ -168,38 +221,57 @@ $('#go').addEventListener('click', async () => {
 
 // ---------- reader ----------
 
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // _underscores_ are the plain-text convention for italics (Project Gutenberg, Markdown).
-const prose = (s) => esc(s).replace(/(^|[\s(“"«])_([^_\n]+)_(?=$|[\s.,;:!?)”"»—-])/g, '$1<em>$2</em>');
+const prose = (s) => esc(s).replace(/(^|[\s(“"«»])_([^_\n]+)_(?=$|[\s.,;:!?)”"»«—-])/g, '$1<em>$2</em>');
 const parasHtml = (ps) => ps.map((p) => {
   const cls = p.h ? ' class="h"' : p.t.includes('\n') ? ' class="v"' : '';
   return `<p${cls}>${prose(p.t)}</p>`;
 }).join('');
 
-function rowHtml([a, b], k, left, right) {
-  const chapter = k > 0 && (a[0]?.h || b[0]?.h) ? ' chapter' : '';
-  return `<div class="row${chapter}"><div class="col col-l" lang="${left.lang}">${parasHtml(a)}</div><div class="col col-r" lang="${right.lang}">${parasHtml(b)}</div></div>`;
-}
-
 let current = null;
 let observer = null;
 
-function openReader(rows, left, right) {
-  current = { rows, left, right, shown: 0 };
+// Columns in display order, skipping hidden ones.
+const shownColumns = () => current.order.filter((k) => !current.hidden.has(k));
+
+function rowHtml(row, k) {
+  const chapter = k > 0 && row.some((col) => col[0]?.h) ? ' chapter' : '';
+  const cols = shownColumns().map((c) => `<div class="col" data-k="${c}" lang="${current.columns[c].lang}">${parasHtml(row[c])}</div>`);
+  return `<div class="row${chapter}">${cols.join('')}</div>`;
+}
+
+function openReader(rows, columns) {
+  current = { rows, columns, order: columns.map((_, k) => k), hidden: new Set(), shown: 0 };
   $('#setup').hidden = true;
   $('.masthead').hidden = true;
   $('#reader').hidden = false;
-  $('#titles').textContent = `${left.title}  ·  ${right.title}`;
-  document.title = `${left.title} — Pamphleteer`;
-  $('#pages').innerHTML = '';
+  document.title = `${columns[0].title} — Pamphleteer`;
+  $('#gloss-lang').innerHTML = [...new Set(columns.map((c) => c.lang))].map((l) => `<option value="${l}">${LANGUAGES[l] || l}</option>`).join('');
+  $('#gloss-lang').value = columns[0].lang;
+  $('#col-toggles').innerHTML = columns.map((c, k) => `<button class="tool chip on" data-k="${k}" title="${esc(c.title)}">${c.lang.toUpperCase()}</button>`).join('');
+  $('#rotate').hidden = columns.length < 2;
+  rerender();
   window.scrollTo(0, 0);
-  fill();
   observer?.disconnect();
   observer = new IntersectionObserver((entries) => entries[0].isIntersecting && fill(), { rootMargin: '1500px' });
   observer.observe($('#sentinel'));
 }
 
-// Keep roughly two screens of rows ready below the viewport.
+// Redraw after a column change, keeping the reader near the same row.
+function rerender() {
+  const c = current;
+  const anchor = [...document.querySelectorAll('#pages .row')].findIndex((r) => r.getBoundingClientRect().bottom > 60);
+  const shown = shownColumns();
+  $('#titles').textContent = shown.map((k) => c.columns[k].title).join('  ·  ');
+  $('#pages').style.setProperty('--cols', shown.length);
+  $('#pages').dataset.cols = shown.length;
+  $('#pages').innerHTML = '';
+  c.shown = 0;
+  while (c.shown < Math.max(anchor + 1, 1)) more();
+  fill();
+  if (anchor > 0) document.querySelectorAll('#pages .row')[anchor].scrollIntoView();
+}
+
 function fill() {
   while (current && current.shown < current.rows.length && $('#sentinel').getBoundingClientRect().top < innerHeight + 1500) more();
 }
@@ -209,7 +281,7 @@ function more() {
   if (!c || c.shown >= c.rows.length) return;
   const end = Math.min(c.rows.length, c.shown + BATCH);
   let html = '';
-  for (let k = c.shown; k < end; k++) html += rowHtml(c.rows[k], k, c.left, c.right);
+  for (let k = c.shown; k < end; k++) html += rowHtml(c.rows[k], k);
   $('#pages').insertAdjacentHTML('beforeend', html);
   c.shown = end;
 }
@@ -223,23 +295,60 @@ window.addEventListener('scroll', () => {
   $('#progress').style.width = (frac * 100).toFixed(2) + '%';
 }, { passive: true });
 
-let size = 19;
+attachLookup({
+  pages: $('#pages'),
+  gloss: $('#gloss'),
+  panel: $('#dict'),
+  columns: () => (current ? shownColumns().map((k) => current.columns[k]) : []),
+  glossTarget: () => $('#gloss-lang').value,
+});
+
+let size = +store.get('pamphleteer.size') || 19;
 const setSize = (d) => {
-  size = Math.min(30, Math.max(13, size + d));
+  size = Math.min(30, Math.max(12, size + d));
   document.body.style.setProperty('--size', size + 'px');
+  store.set('pamphleteer.size', size);
 };
+setSize(0);
 $('#smaller').addEventListener('click', () => setSize(-1));
 $('#larger').addEventListener('click', () => setSize(1));
-$('#swap').addEventListener('click', () => $('#pages').classList.toggle('swap'));
-$('#view').addEventListener('change', (e) => {
-  const p = $('#pages');
-  p.classList.remove('view-left', 'view-right');
-  if (e.target.value !== 'both') p.classList.add('view-' + e.target.value);
+
+$('#font').innerHTML = Object.entries(FONTS).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
+function setFont(key) {
+  const f = FONTS[key] || FONTS.garamond;
+  if (f.url && !document.querySelector(`link[data-font="${key}"]`)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.dataset.font = key;
+    link.href = `https://fonts.googleapis.com/css2?family=${f.url}&display=swap`;
+    document.head.appendChild(link);
+  }
+  document.body.style.setProperty('--text', `${f.css}, 'EB Garamond', 'Noto Serif', serif`);
+  $('#font').value = key in FONTS ? key : 'garamond';
+  store.set('pamphleteer.font', key);
+}
+setFont(store.get('pamphleteer.font') || 'garamond');
+$('#font').addEventListener('change', (e) => setFont(e.target.value));
+
+$('#rotate').addEventListener('click', () => {
+  current.order.push(current.order.shift());
+  rerender();
 });
+$('#col-toggles').addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  const k = +chip.dataset.k;
+  if (current.hidden.has(k)) current.hidden.delete(k);
+  else if (current.hidden.size < current.columns.length - 1) current.hidden.add(k); // keep at least one
+  chip.classList.toggle('on', !current.hidden.has(k));
+  rerender();
+});
+
 $('#back').addEventListener('click', () => {
   observer?.disconnect();
   current = null;
   $('#pages').innerHTML = '';
+  $('#dict').hidden = true;
   $('#reader').hidden = true;
   $('#setup').hidden = false;
   $('.masthead').hidden = false;
@@ -251,14 +360,40 @@ $('#download').addEventListener('click', async () => {
   if (!c) return;
   const css = await fetch('css/style.css').then((r) => r.text());
   const parts = [];
-  for (let k = 0; k < c.rows.length; k++) parts.push(rowHtml(c.rows[k], k, c.left, c.right));
-  const title = esc(`${c.left.title} · ${c.right.title}`);
-  const doc = `<!doctype html><html lang="${c.left.lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
-    + `<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=IM+Fell+English+SC&display=swap" rel="stylesheet"><style>${css}</style></head>`
-    + `<body><nav class="toolbar"><span class="titles">${title}</span></nav><article class="pages">${parts.join('')}</article><p class="colophon">Set by Pamphleteer.</p></body></html>`;
+  for (let k = 0; k < c.rows.length; k++) parts.push(rowHtml(c.rows[k], k));
+  const title = esc($('#titles').textContent);
+  const fontLinks = [...document.querySelectorAll('link[rel=stylesheet][href*="fonts.googleapis"]')].map((l) => l.outerHTML).join('');
+  const n = shownColumns().length;
+  const doc = `<!doctype html><html lang="${c.columns[c.order[0]].lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
+    + `${fontLinks}<style>${css}</style></head>`
+    + `<body style="--size:${size}px;--text:${document.body.style.getPropertyValue('--text')}"><nav class="toolbar"><span class="titles">${title}</span></nav>`
+    + `<article class="pages" data-cols="${n}" style="--cols:${n}">${parts.join('')}</article><p class="colophon">Set by Pamphleteer.</p></body></html>`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
-  a.download = (c.left.title || 'pamphlet').replace(/[^\p{L}\p{N} _-]+/gu, '').trim() + ' — parallel.html';
+  a.download = (c.columns[0].title || 'pamphlet').replace(/[^\p{L}\p{N} _-]+/gu, '').trim() + ' — parallel.html';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+
+// PDF: lay out every row, then hand the page to the browser's print engine ("Save as PDF").
+// It typesets real text with the chosen font, so the PDF stays searchable and small.
+$('#pdf').addEventListener('click', async () => {
+  const c = current;
+  if (!c) return;
+  const btn = $('#pdf');
+  btn.textContent = 'Setting…';
+  await new Promise((r) => setTimeout(r, 30));
+  while (c.shown < c.rows.length) more();
+  await document.fonts.ready;
+  const n = shownColumns().length;
+  const page = document.createElement('style');
+  page.id = 'page-size';
+  page.textContent = `@page { size: A4 ${n >= 3 ? 'landscape' : 'portrait'}; margin: 16mm 14mm; }`;
+  document.head.appendChild(page);
+  const before = document.title;
+  document.title = $('#titles').textContent.replace(/\s+·\s+/g, ' · ');
+  btn.textContent = 'PDF';
+  print();
+  document.title = before;
+  page.remove();
 });

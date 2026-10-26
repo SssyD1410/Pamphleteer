@@ -5,11 +5,17 @@ import { isHeadingLine } from './extract.js';
 // are paired by their position in the running text (share of total characters).
 
 const ROMAN = { i: 1, v: 5, x: 10, l: 50, c: 100 };
-const ORDINALS = {
-  first: 1, premier: 1, première: 1, erstes: 1, primero: 1, primo: 1, первая: 1,
-  second: 2, deuxième: 2, zweites: 2, segundo: 2, secondo: 2,
-  third: 3, troisième: 3, drittes: 3, tercero: 3, terzo: 3,
-};
+// Spelled-out chapter numbers 1–12, by language, in order.
+const NUMBER_WORDS = [
+  'one two three four five six seven eight nine ten eleven twelve',
+  'first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth',
+  'premier deuxième troisième quatrième cinquième sixième septième huitième neuvième dixième onzième douzième',
+  'erstes zweites drittes viertes fünftes sechstes siebentes achtes neuntes zehntes elftes zwölftes',
+  'primero segundo tercero cuarto quinto sexto séptimo octavo noveno décimo undécimo duodécimo',
+  'primo secondo terzo quarto quinto sesto settimo ottavo nono decimo undicesimo dodicesimo',
+];
+const ORDINALS = { première: 1, siebtes: 7, erste: 1, zweite: 2, dritte: 3 };
+for (const line of NUMBER_WORDS) line.split(' ').forEach((w, k) => { ORDINALS[w] ??= k + 1; });
 
 function numeral(heading) {
   const s = heading.toLowerCase();
@@ -177,3 +183,39 @@ export function collage(L, R) {
 
 // For translated text the pairing is exact: one translated paragraph per source paragraph.
 export const pairOneToOne = (L, R) => ({ rows: L.map((p, k) => [[p], [R[k]]]), chapters: 0 });
+
+// Three or four texts: align each one to the first (the pivot), then cut rows only where
+// every alignment allows a break in the pivot, so all columns stay in step.
+export function collageMany(pivot, others) {
+  const maps = others.map(({ paras, exact }) => {
+    const { rows } = exact ? pairOneToOne(pivot, paras) : collage(pivot, paras);
+    const cuts = new Set();
+    const pieces = []; // [pivotStart, paragraphs of this text]
+    let p = 0;
+    for (const [a, b] of rows) {
+      pieces.push([p, b]);
+      p += a.length;
+      cuts.add(p);
+    }
+    return { cuts, pieces };
+  });
+  const n = pivot.length;
+  const cuts = [...maps[0].cuts].filter((c) => maps.every((m) => m.cuts.has(c))).sort((x, y) => x - y);
+  if (cuts.at(-1) !== n) cuts.push(n);
+
+  const rows = [];
+  let start = 0;
+  const cursor = maps.map(() => 0);
+  for (const end of cuts) {
+    const row = [pivot.slice(start, end)];
+    maps.forEach((m, k) => {
+      const col = [];
+      // Pieces that start inside this row (a piece with no pivot text starts at its row's start).
+      while (cursor[k] < m.pieces.length && (m.pieces[cursor[k]][0] < end || end === n)) col.push(...m.pieces[cursor[k]++][1]);
+      row.push(col);
+    });
+    rows.push(row);
+    start = end;
+  }
+  return { rows };
+}

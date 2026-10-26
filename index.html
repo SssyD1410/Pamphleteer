@@ -31,19 +31,22 @@
 </head>
 <body>
   <header class="masthead">
-    <p class="masthead-rule">Two tongues · One page · Est. MMXXVI</p>
+    <p class="masthead-rule">Many tongues · One page · Est. MMXXVI</p>
     <h1><a href="./" class="wordmark">Pamphleteer</a></h1>
     <p class="masthead-rule">A press for parallel texts</p>
   </header>
 
   <main id="setup" class="setup">
-    <p class="lede">Lay a book beside its translation. Upload the same work in two languages and Pamphleteer sets them in facing columns, chapter by chapter, paragraph by paragraph. Files are read in your browser and never uploaded.</p>
+    <p class="lede">Lay a book beside its translations. Upload the same work in two, three or four languages and Pamphleteer sets them in facing columns, chapter by chapter, paragraph by paragraph. Files are read in your browser and never uploaded.</p>
 
-    <div class="sides">
-      <section class="side" data-side="left">
-        <h2>Original</h2>
+    <div class="sides" id="sides"></div>
+    <p class="add-side"><button type="button" class="link" id="add-side">+ Add another language</button></p>
+
+    <template id="side-template">
+      <section class="side">
+        <h2><span class="side-name"></span> <button type="button" class="link remove-side" hidden>remove</button></h2>
         <label class="drop">
-          <input type="file" accept="" hidden>
+          <input type="file" hidden>
           <span class="drop-title">Choose a file</span>
           <span class="drop-hint">or drop it here</span>
         </label>
@@ -54,28 +57,11 @@
           <span class="info"></span>
         </div>
       </section>
-
-      <div class="divider" aria-hidden="true">&amp;</div>
-
-      <section class="side" data-side="right">
-        <h2>Translation</h2>
-        <label class="drop">
-          <input type="file" accept="" hidden>
-          <span class="drop-title">Choose a file</span>
-          <span class="drop-hint">or drop it here</span>
-        </label>
-        <button type="button" class="link paste-toggle">or paste text</button>
-        <textarea class="paste" hidden placeholder="Paste text here…"></textarea>
-        <div class="meta">
-          <label>Language <select class="lang"></select></label>
-          <span class="info"></span>
-        </div>
-      </section>
-    </div>
+    </template>
 
     <section id="translate-opts" class="translate-opts" hidden>
-      <h3>No translation on hand?</h3>
-      <p>Leave the second side empty and Pamphleteer will translate short texts (up to <span id="limit"></span> characters). Longer works should be uploaded in both languages.</p>
+      <h3>Missing a translation?</h3>
+      <p>Leave a side empty and Pamphleteer will translate the first text into that side’s language. This works for short texts (up to <span id="limit"></span> characters); longer works should be uploaded in every language.</p>
       <div class="opts-row">
         <label>Engine
           <select id="engine">
@@ -96,7 +82,9 @@
       <p id="status" class="status" role="status"></p>
     </div>
 
-    <p class="sample">Try it with a public-domain book: <button type="button" class="link" id="sample">Alice’s Adventures in Wonderland, English &amp; French</button></p>
+    <p class="sample">Try a public-domain book: <em>Alice’s Adventures in Wonderland</em> in
+      <button type="button" class="link" data-sample="en,fr">English &amp; French</button> or
+      <button type="button" class="link" data-sample="en,fr,de">English, French &amp; German</button></p>
     <p class="fine formats">Accepts PDF, EPUB, DOCX, HTML, FB2, Markdown, SRT and plain text.</p>
   </main>
 
@@ -105,22 +93,24 @@
       <button id="back" class="link">← New</button>
       <span id="titles" class="titles"></span>
       <span class="tools">
+        <select id="font" class="tool" title="Typeface"></select>
         <button id="smaller" class="tool" title="Smaller type">A−</button>
         <button id="larger" class="tool" title="Larger type">A+</button>
-        <button id="swap" class="tool" title="Swap columns">⇄</button>
-        <select id="view" class="tool" title="Columns">
-          <option value="both">Both</option>
-          <option value="left">Left only</option>
-          <option value="right">Right only</option>
-        </select>
-        <button id="download" class="tool" title="Save as a web page">Save</button>
+        <button id="rotate" class="tool" title="Move the first column to the end">⇄</button>
+        <span id="col-toggles" class="col-toggles" title="Show or hide a language"></span>
+        <label class="gloss-pick" title="Language for hover glosses">Gloss <select id="gloss-lang" class="tool"></select></label>
+        <button id="download" class="tool" title="Save as a web page">HTML</button>
+        <button id="pdf" class="tool" title="Save the whole parallel text as a PDF">PDF</button>
       </span>
       <div id="progress" class="progress"></div>
     </nav>
     <article id="pages" class="pages"></article>
     <div id="sentinel" class="sentinel"></div>
-    <p class="colophon">Set by Pamphleteer.</p>
+    <p class="colophon">Set by Pamphleteer. Hover a word for a gloss; click it for the dictionary.</p>
   </div>
+
+  <div id="gloss" class="gloss" role="tooltip" hidden></div>
+  <aside id="dict" class="dict" hidden aria-label="Dictionary"></aside>
 
   <script type="module" src="js/app.js"></script>
 </body>

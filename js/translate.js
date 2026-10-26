@@ -68,8 +68,14 @@ function batches(paras, maxChars) {
   return out;
 }
 
+const withTimeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), ms)),
+]);
+
 async function viaBrowser(paras, from, to, progress) {
-  const availability = await Translator.availability({ sourceLanguage: from, targetLanguage: to });
+  const availability = await withTimeout(Translator.availability({ sourceLanguage: from, targetLanguage: to }), 5000)
+    .catch(() => { throw new Error('Your browser’s built-in translator is not responding. Pick another engine.'); });
   if (availability === 'unavailable') throw new Error(`Your browser can't translate ${LANGUAGES[from]} → ${LANGUAGES[to]} on-device.`);
   const t = await Translator.create({
     sourceLanguage: from,
@@ -145,6 +151,41 @@ async function viaMyMemory(paras, from, to, progress) {
     progress(`Translating paragraph ${i + 1} / ${paras.length}`, (i + 1) / paras.length);
   }
   return out;
+}
+
+// ---------- single words, for the reader's hover gloss and dictionary ----------
+
+const wordCache = new Map();
+const translators = new Map();
+let builtInStalled = false; // some browsers expose the API but never answer
+
+async function browserTranslator(from, to, allowDownload) {
+  if (!('Translator' in self) || builtInStalled) return null;
+  const key = from + '>' + to;
+  if (translators.has(key)) return translators.get(key);
+  const availability = await withTimeout(Translator.availability({ sourceLanguage: from, targetLanguage: to }), 2000)
+    .catch(() => { builtInStalled = true; return 'unavailable'; });
+  // Downloading a language pack needs a click, so a hover only uses packs already installed.
+  if (availability === 'unavailable' || (availability !== 'available' && !allowDownload)) return null;
+  const t = withTimeout(Translator.create({ sourceLanguage: from, targetLanguage: to }), allowDownload ? 20000 : 3000)
+    .catch(() => { translators.delete(key); builtInStalled = true; return null; });
+  translators.set(key, t);
+  return t;
+}
+
+export function translateWord(word, from, to, { allowDownload = false } = {}) {
+  const key = `${from}>${to}:${word.toLowerCase()}`;
+  if (wordCache.has(key)) return wordCache.get(key);
+  const job = (async () => {
+    try {
+      const t = await browserTranslator(from, to, allowDownload);
+      if (t) return await withTimeout(t.translate(word), 4000);
+    } catch { builtInStalled = true; /* fall through to MyMemory */ }
+    const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${from}|${to}`).then((r) => r.json());
+    return String(res.responseStatus) === '200' ? res.responseData.translatedText : '';
+  })().catch(() => '');
+  wordCache.set(key, job);
+  return job;
 }
 
 export function translate(engine, paras, from, to, { apiKey, progress = () => {} } = {}) {
