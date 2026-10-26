@@ -50,11 +50,42 @@ export function guessLanguage(sample) {
 
 export function engines() {
   return {
-    browser: 'Translator' in self,
+    google: true,
     claude: true,
+    browser: 'Translator' in self,
     mymemory: true,
   };
 }
+
+// ---------- API keys (the reader's own; sent only to the provider they belong to) ----------
+
+const KEY_STORE = 'pamphleteer.keys';
+export const keys = { google: '', claude: '', remember: false };
+try {
+  Object.assign(keys, JSON.parse(localStorage.getItem(KEY_STORE) || '{}'));
+} catch { /* storage blocked */ }
+
+export function setKeys(next) {
+  Object.assign(keys, next);
+  try {
+    if (keys.remember) localStorage.setItem(KEY_STORE, JSON.stringify(keys));
+    else localStorage.removeItem(KEY_STORE);
+  } catch { /* storage blocked */ }
+  wordCache.clear();
+}
+
+// The best engine available for the reader's word lookups.
+export function wordEngine() {
+  if (keys.claude) return 'claude';
+  if (keys.google) return 'google';
+  return 'free';
+}
+
+export const ENGINE_NAMES = {
+  claude: 'Claude, reading the whole sentence',
+  google: 'Google Translate',
+  free: 'free engines (basic quality)',
+};
 
 // Packs paragraphs into batches so each request stays small.
 function batches(paras, maxChars) {
@@ -91,9 +122,47 @@ async function viaBrowser(paras, from, to, progress) {
   return out;
 }
 
+let claudeClient = null;
+async function claude(apiKey) {
+  if (claudeClient?.apiKey !== apiKey) {
+    const { default: Anthropic } = await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm');
+    claudeClient = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  }
+  return claudeClient;
+}
+
+// Google Cloud Translation (v2) with the reader's API key, sent as a header rather than in the URL.
+async function google(texts, from, to, apiKey) {
+  const res = await fetch('https://translation.googleapis.com/language/translate/v2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey },
+    body: JSON.stringify({ q: texts, source: from, target: to, format: 'text' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error('Google Translate: ' + (data.error?.message || `HTTP ${res.status}`));
+  return data.data.translations.map((t) => t.translatedText);
+}
+
+async function viaGoogle(paras, from, to, apiKey, progress) {
+  if (!apiKey) throw new Error('Add a Google Cloud API key first.');
+  const out = [];
+  // Google suggests at most ~5,000 characters and 128 segments per request.
+  const groups = batches(paras, 5000).flatMap((g) => {
+    const parts = [];
+    for (let i = 0; i < g.length; i += 100) parts.push(g.slice(i, i + 100));
+    return parts;
+  });
+  for (const group of groups) {
+    const list = await google(group.map((p) => p.t), from, to, apiKey);
+    group.forEach((p, k) => out.push({ t: list[k] ?? '', h: p.h }));
+    progress(`Translated ${out.length} / ${paras.length} paragraphs`, out.length / paras.length);
+  }
+  return out;
+}
+
 async function viaClaude(paras, from, to, apiKey, progress) {
-  const { default: Anthropic } = await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.133.0/+esm');
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  if (!apiKey) throw new Error('Add an Anthropic API key first.');
+  const client = await claude(apiKey);
   const out = [];
   const groups = batches(paras, 8000);
   for (let g = 0; g < groups.length; g++) {
@@ -173,23 +242,70 @@ async function browserTranslator(from, to, allowDownload) {
   return t;
 }
 
-export function translateWord(word, from, to, { allowDownload = false } = {}) {
-  const key = `${from}>${to}:${word.toLowerCase()}`;
+// Claude reads the whole sentence, so it can pick the sense the word has here
+// (the bank of a river, not of money) and name its dictionary form.
+async function claudeWord(word, context, from, to) {
+  const client = await claude(keys.claude);
+  const src = LANGUAGES[from] || from, dst = LANGUAGES[to] || to;
+  const response = await client.beta.messages.create({
+    model: 'claude-opus-5-5',
+    max_tokens: 1024,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: {
+      effort: 'low',
+      format: {
+        type: 'json_schema',
+        schema: {
+          type: 'object',
+          properties: {
+            translation: { type: 'string' },
+            lemma: { type: 'string' },
+            note: { type: 'string' },
+          },
+          required: ['translation', 'lemma', 'note'],
+          additionalProperties: false,
+        },
+      },
+    },
+    system: `You are a bilingual dictionary for a reader of ${src} literature. You get a word and the sentence it appears in. Return "translation": the ${dst} word or short phrase that best renders it in this sentence (1 to 4 words); "lemma": its dictionary form in ${src}; "note": one short ${dst} sentence on its sense or grammar here (tense, case, idiom), or an empty string if there is nothing useful to add.`,
+    messages: [{ role: 'user', content: JSON.stringify({ word, sentence: context || word }) }],
+  });
+  if (response.stop_reason !== 'end_turn') throw new Error('Claude did not finish');
+  const r = JSON.parse(response.content.find((blk) => blk.type === 'text')?.text || '{}');
+  return { text: r.translation || '', lemma: r.lemma || '', note: r.note || '', via: 'claude' };
+}
+
+async function freeWord(word, from, to, allowDownload) {
+  try {
+    const t = await browserTranslator(from, to, allowDownload);
+    if (t) return { text: await withTimeout(t.translate(word), 4000), via: 'browser' };
+  } catch { builtInStalled = true; /* fall through to MyMemory */ }
+  const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${from}|${to}`).then((r) => r.json());
+  return { text: String(res.responseStatus) === '200' ? res.responseData.translatedText : '', via: 'mymemory' };
+}
+
+// One word as used in `context` (its sentence): { text, lemma?, note?, via }.
+export function translateWord(word, from, to, { context = '', allowDownload = false } = {}) {
+  const engine = wordEngine();
+  const key = `${engine}|${from}>${to}:${word.toLowerCase()}` + (engine === 'claude' ? '|' + context : '');
   if (wordCache.has(key)) return wordCache.get(key);
   const job = (async () => {
-    try {
-      const t = await browserTranslator(from, to, allowDownload);
-      if (t) return await withTimeout(t.translate(word), 4000);
-    } catch { builtInStalled = true; /* fall through to MyMemory */ }
-    const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${from}|${to}`).then((r) => r.json());
-    return String(res.responseStatus) === '200' ? res.responseData.translatedText : '';
-  })().catch(() => '');
+    if (engine === 'claude') {
+      try { return await claudeWord(word, context, from, to); } catch { /* fall back below */ }
+    }
+    if (keys.google) {
+      try { return { text: (await google([word], from, to, keys.google))[0], via: 'google' }; } catch { /* fall back */ }
+    }
+    return freeWord(word, from, to, allowDownload);
+  })().catch(() => ({ text: '', via: 'none' }));
   wordCache.set(key, job);
   return job;
 }
 
-export function translate(engine, paras, from, to, { apiKey, progress = () => {} } = {}) {
+export function translate(engine, paras, from, to, { progress = () => {} } = {}) {
   if (engine === 'browser') return viaBrowser(paras, from, to, progress);
-  if (engine === 'claude') return viaClaude(paras, from, to, apiKey, progress);
+  if (engine === 'google') return viaGoogle(paras, from, to, keys.google, progress);
+  if (engine === 'claude') return viaClaude(paras, from, to, keys.claude, progress);
   return viaMyMemory(paras, from, to, progress);
 }

@@ -1,7 +1,8 @@
 import { ACCEPT, extract, paragraphsFromText, charCount } from './extract.js';
 import { collageMany } from './align.js';
-import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate } from './translate.js';
+import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate, keys, setKeys } from './translate.js';
 import { attachLookup, esc } from './dict.js';
+import { attachSentenceHover } from './sentences.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const BATCH = 120; // rows added to the page per scroll step
@@ -144,7 +145,7 @@ function refresh() {
     if (n > TRANSLATE_LIMIT) {
       ok = false;
       status(`The first text has ${fmt(n)} characters — too long to translate here. Upload its translations instead.`);
-    } else if ($('#engine').value === 'claude' && !$('#api-key').value.trim()) {
+    } else if (['claude', 'google'].includes($('#engine').value) && !keys[$('#engine').value]) {
       ok = false;
     }
   }
@@ -154,20 +155,38 @@ function refresh() {
 
 function updateEngineNote() {
   const e = $('#engine').value;
-  $('#key-wrap').hidden = e !== 'claude';
+  for (const f of document.querySelectorAll('#translate-opts .key-field')) f.hidden = f.dataset.for !== e;
   $('#engine-note').textContent = {
+    claude: 'Best quality: Claude translates like a literary translator, keeping tone, idiom and dialogue. Uses your Anthropic key, called straight from this page.',
+    google: 'Google Cloud Translation with your own API key (first 500,000 characters a month are free). Same quality as translate.google.com.',
     browser: engines().browser
-      ? 'Uses the translation model built into your browser. Free and private; the first run may download a language pack.'
+      ? 'Uses the translation model built into your browser. Free and private, but rougher than Google or Claude; the first run may download a language pack.'
       : 'Your browser has no built-in translator (it needs a recent desktop Chrome). Pick another engine.',
-    claude: 'Calls Claude directly from this page with your key. The key is kept only in this tab and is never stored.',
-    mymemory: 'Sends the text to the public MyMemory service. Free, but limited to about 5,000 characters a day.',
+    mymemory: 'Sends the text to the public MyMemory service. Free but basic, and limited to about 5,000 characters a day.',
   }[e];
+  try { localStorage.setItem('pamphleteer.engine', e); } catch { /* storage blocked */ }
   refresh();
 }
 
-if (!engines().browser) $('#engine').value = 'claude';
+// Key fields: the setup form and the dictionary panel share the same keys.
+function syncKeyFields() {
+  for (const i of document.querySelectorAll('.key-input')) if (document.activeElement !== i) i.value = keys[i.dataset.key] || '';
+  for (const c of document.querySelectorAll('.key-remember')) c.checked = !!keys.remember;
+}
+document.addEventListener('input', (e) => {
+  if (e.target.matches('.key-input')) { setKeys({ [e.target.dataset.key]: e.target.value.trim() }); syncKeyFields(); refresh(); }
+});
+document.addEventListener('change', (e) => {
+  if (e.target.matches('.key-remember')) { setKeys({ remember: e.target.checked }); syncKeyFields(); }
+});
+syncKeyFields();
+
+{
+  let saved = null;
+  try { saved = localStorage.getItem('pamphleteer.engine'); } catch { /* storage blocked */ }
+  $('#engine').value = saved || (keys.claude ? 'claude' : keys.google ? 'google' : engines().browser ? 'browser' : 'mymemory');
+}
 $('#engine').addEventListener('change', updateEngineNote);
-$('#api-key').addEventListener('input', refresh);
 updateEngineNote();
 
 const SAMPLES = {
@@ -203,7 +222,6 @@ $('#go').addEventListener('click', async () => {
       const to = s.lang.value;
       status(`Translating into ${LANGUAGES[to]}…`);
       const paras = await translate($('#engine').value, first.paras, first.lang.value, to, {
-        apiKey: $('#api-key').value.trim(),
         progress: (msg, frac) => status(`${LANGUAGES[to]}: ${msg}` + (frac ? ` — ${Math.round(frac * 100)}%` : '')),
       });
       others.push({ paras, title: `${LANGUAGES[to]} translation`, lang: to, exact: true });
@@ -214,7 +232,8 @@ $('#go').addEventListener('click', async () => {
     status('');
     openReader(rows, [{ title: first.title, lang: first.lang.value }, ...others.map(({ title, lang }) => ({ title, lang }))]);
   } catch (err) {
-    status(err.message || String(err), true);
+    const friendly = { 401: 'That Anthropic API key was rejected. Check it and try again.', 429: 'Claude is rate-limiting this key; wait a minute and try again.' };
+    status(friendly[err.status] || err.message || String(err), true);
   }
   refresh();
 });
@@ -361,6 +380,8 @@ window.addEventListener('scroll', () => {
   const within = max > 0 ? (scrollY / max) * ((current.shown - a) / (b - a)) : 0;
   $('#progress').style.width = (((a + within * (b - a)) / current.rows.length) * 100).toFixed(2) + '%';
 }, { passive: true });
+
+attachSentenceHover($('#pages'));
 
 attachLookup({
   pages: $('#pages'),

@@ -2,21 +2,13 @@
 // dictionary entry. Words are found from the pointer position on demand, so the page
 // never wraps each word of a book in its own element.
 
-import { LANGUAGES, translateWord } from './translate.js';
+import { LANGUAGES, translateWord, wordEngine, ENGINE_NAMES, keys } from './translate.js';
+import { caretAt, sentenceAround } from './sentences.js';
 
 const segmenters = {};
 const segmenter = (lang) => (segmenters[lang] ||= new Intl.Segmenter(lang, { granularity: 'word' }));
 
-function caretAt(x, y) {
-  if (document.caretPositionFromPoint) {
-    const p = document.caretPositionFromPoint(x, y);
-    return p && { node: p.offsetNode, offset: p.offset };
-  }
-  const r = document.caretRangeFromPoint?.(x, y);
-  return r && { node: r.startContainer, offset: r.startOffset };
-}
-
-// Returns { word, lang, col, rect } for the word under (x, y), or null.
+// Returns { word, lang, col, rect, context } for the word under (x, y), or null.
 export function wordAt(x, y) {
   const c = caretAt(x, y);
   if (!c || c.node.nodeType !== Node.TEXT_NODE) return null;
@@ -34,7 +26,7 @@ export function wordAt(x, y) {
     // The caret snaps to the nearest character, so make sure the pointer is really on the word.
     for (const rect of range.getClientRects()) {
       if (x >= rect.left - 1 && x <= rect.right + 1 && y >= rect.top - 1 && y <= rect.bottom + 1) {
-        return { word: seg.segment, lang, col: +col.dataset.k, rect };
+        return { word: seg.segment, lang, col: +col.dataset.k, rect, context: sentenceAround(c.node, seg.index) };
       }
     }
     return null;
@@ -58,7 +50,10 @@ async function fetchDefinitions(word, lang) {
     const res = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(w)}?redirect=true`);
     if (!res.ok) continue;
     const data = await res.json();
-    const entries = data[lang] || [];
+    // Wiktionary files "Translingual" symbols (ISO codes, abbreviations) under the same key; skip them.
+    const all = data[lang] || [];
+    const own = all.filter((e) => e.language !== 'Translingual');
+    const entries = own.length ? own : all;
     if (entries.length) {
       return entries.map((e) => ({
         pos: e.partOfSpeech,
@@ -110,11 +105,13 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
     const top = r.bottom + 8 + gloss.offsetHeight > innerHeight ? r.top - gloss.offsetHeight - 8 : r.bottom + 8;
     gloss.style.top = Math.max(4, top) + 'px';
     gloss.style.left = Math.min(Math.max(4, r.left), innerWidth - gloss.offsetWidth - 8) + 'px';
-    translateWord(hit.word, hit.lang, to).then((t) => {
-      if (hoverKey === key) gloss.querySelector('.g-tr').textContent = t ? `${LANGUAGES[to] || to}: ${t}` : '';
+    translateWord(hit.word, hit.lang, to, { context: hit.context }).then((r) => {
+      if (hoverKey !== key) return;
+      gloss.querySelector('.g-tr').textContent = r.text ? `${LANGUAGES[to] || to}: ${r.text}` : '';
+      if (r.note) gloss.querySelector('.g-def').textContent = r.note;
     });
     definitions(hit.word, hit.lang).then((d) => {
-      if (hoverKey !== key || !d.length) return;
+      if (hoverKey !== key || !d.length || gloss.querySelector('.g-def').textContent) return;
       const tmp = document.createElement('div');
       tmp.innerHTML = d[0].defs[0] || '';
       gloss.querySelector('.g-def').textContent = `${d[0].pos.toLowerCase()} · ${tmp.textContent}`.slice(0, 140);
@@ -140,18 +137,21 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
   pages.addEventListener('click', (e) => {
     if (!getSelection().isCollapsed) return; // the reader was selecting, not looking up
     const hit = wordAt(e.clientX, e.clientY);
-    if (hit) { hideGloss(); openPanel(hit.word, hit.lang); }
+    if (hit) { hideGloss(); openPanel(hit.word, hit.lang, hit.context); }
   });
 
   panel.addEventListener('click', (e) => {
     const x = e.target.closest('.xref');
-    if (x) openPanel(x.dataset.w, panel.dataset.lang);
+    if (x) openPanel(x.dataset.w, panel.dataset.lang, '');
     if (e.target.closest('.dict-close')) panel.hidden = true;
+    if (e.target.closest('.dict-retry')) openPanel(panel.dataset.word, panel.dataset.lang, panel.dataset.context);
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.hidden = true; });
 
-  async function openPanel(word, lang) {
+  async function openPanel(word, lang, context) {
     panel.dataset.lang = lang;
+    panel.dataset.word = word;
+    panel.dataset.context = context;
     const others = [...new Set(columns().map((c) => c.lang).filter((l) => l !== lang))];
     if (!others.length) others.push(lang === 'en' ? 'fr' : 'en');
     const wikt = (sub) => `https://${sub}.wiktionary.org/wiki/${encodeURIComponent(word.toLowerCase())}`;
@@ -159,21 +159,37 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
       <button class="dict-close tool" aria-label="Close">×</button>
       <p class="dict-lang">${esc(LANGUAGES[lang] || lang)}</p>
       <h2 class="dict-word" lang="${lang}">${esc(word)}</h2>
-      <section><h3>Translation</h3><dl class="dict-tr">${others.map((l) =>
-        `<dt>${esc(LANGUAGES[l] || l)}</dt><dd data-l="${l}" lang="${l}">…</dd>`).join('')}</dl></section>
+      ${context ? `<blockquote class="dict-context" lang="${lang}">${esc(context).replace(esc(word), `<mark>${esc(word)}</mark>`)}</blockquote>` : ''}
+      <section><h3>Translation <span class="src">${esc(ENGINE_NAMES[wordEngine()])}</span></h3><dl class="dict-tr">${others.map((l) =>
+        `<dt>${esc(LANGUAGES[l] || l)}</dt><dd data-l="${l}" lang="${l}">…</dd>`).join('')}</dl><p class="dict-note fine"></p></section>
       <section><h3>Definitions <span class="src">Wiktionary</span></h3><div class="dict-defs">Looking up…</div></section>
       <p class="dict-links">
         <a href="${wikt('en')}#${encodeURIComponent(LANGUAGES[lang] || '')}" target="_blank" rel="noopener">English Wiktionary</a>
         ${others.filter((l) => l !== 'en').map((l) => `· <a href="${wikt(l)}" target="_blank" rel="noopener">${esc(LANGUAGES[l] || l)} Wiktionary</a>`).join(' ')}
         ${lang !== 'en' ? `· <a href="${wikt(lang)}" target="_blank" rel="noopener">${esc(LANGUAGES[lang] || lang)} Wiktionary</a>` : ''}
-      </p>`;
+      </p>
+      <details class="dict-keys"${wordEngine() === 'free' ? ' open' : ''}>
+        <summary>${wordEngine() === 'free' ? 'Get better translations' : 'Translation keys'}</summary>
+        <p class="fine">Free engines translate words out of context. Add a key and Pamphleteer uses Claude (reads the sentence, gives the sense used here) or Google Translate. Keys go only to Anthropic or Google.</p>
+        <label>Anthropic API key <input class="key-input" data-key="claude" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(keys.claude || '')}"></label>
+        <label>Google Cloud API key <input class="key-input" data-key="google" type="password" autocomplete="off" placeholder="AIza…" value="${esc(keys.google || '')}"></label>
+        <label class="fine"><input type="checkbox" class="key-remember"${keys.remember ? ' checked' : ''}> Remember on this device</label>
+        <button type="button" class="tool dict-retry">Look up again</button>
+      </details>`;
     panel.hidden = false;
     panel.scrollTop = 0;
 
+    let noted = false;
     for (const l of others) {
-      translateWord(word, lang, l, { allowDownload: true }).then((t) => {
+      translateWord(word, lang, l, { context, allowDownload: true }).then((r) => {
+        if (panel.dataset.word !== word) return;
         const dd = panel.querySelector(`dd[data-l="${l}"]`);
-        if (dd && panel.dataset.lang === lang) dd.textContent = t || '—';
+        if (dd) dd.textContent = r.text || '—';
+        const note = panel.querySelector('.dict-note');
+        if (note && !noted && (r.note || r.lemma)) {
+          noted = true;
+          note.textContent = [r.lemma && r.lemma.toLowerCase() !== word.toLowerCase() ? `Dictionary form: ${r.lemma}.` : '', r.note].filter(Boolean).join(' ');
+        }
       });
     }
     try {

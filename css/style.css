@@ -399,3 +399,28 @@ select.tool { padding: 3px 4px; border: 1px solid var(--ink); }
   .row.chapter::after { display: none; }
   .colophon { margin: 2em 0 0; }
 }
+
+/* ---------- hovered sentence, underlined in every column ---------- */
+::highlight(pamph-sentence) {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--ink);
+}
+
+.dict-context {
+  margin: 0 0 6px;
+  padding: 6px 0 6px 12px;
+  border-left: 2px solid var(--ink);
+  font-style: italic;
+  font-size: 15px;
+}
+.dict-context mark { background: none; color: inherit; font-style: normal; text-decoration: underline; text-underline-offset: 3px; }
+.dict-note:empty { display: none; }
+.dict-note { margin: 8px 0 0; }
+.dict-keys { margin-top: 20px; padding-top: 10px; border-top: 1px solid var(--hair); font-size: 15px; }
+.dict-keys summary { cursor: pointer; font-style: italic; }
+.dict-keys label { display: block; margin: 8px 0; }
+.dict-keys input[type=password] { display: block; width: 100%; margin-top: 2px; }
+.dict-retry { margin-top: 4px; }
+.remember { display: block; margin-top: 10px; }

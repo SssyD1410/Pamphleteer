@@ -181,6 +181,13 @@ export function collage(L, R) {
   return { rows, chapters: anchors.length };
 }
 
+// Pairs two short lists of units that have a `t` field (e.g. the sentences of one row).
+export function alignUnits(A, B) {
+  const rows = [];
+  alignSegment(A, B, rows);
+  return rows;
+}
+
 // For translated text the pairing is exact: one translated paragraph per source paragraph.
 export const pairOneToOne = (L, R) => ({ rows: L.map((p, k) => [[p], [R[k]]]), chapters: 0 });
 

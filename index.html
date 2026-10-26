@@ -65,15 +65,20 @@
       <div class="opts-row">
         <label>Engine
           <select id="engine">
+            <option value="claude">Claude — literary quality (your API key)</option>
+            <option value="google">Google Translate (your API key)</option>
             <option value="browser">This browser (on-device, free)</option>
-            <option value="claude">Claude (your API key)</option>
-            <option value="mymemory">MyMemory (free, ~5,000 chars/day)</option>
+            <option value="mymemory">MyMemory (free, basic, ~5,000 chars/day)</option>
           </select>
         </label>
-        <label id="key-wrap" hidden>Anthropic API key
-          <input id="api-key" type="password" autocomplete="off" placeholder="sk-ant-…">
+        <label class="key-field" data-for="claude" hidden>Anthropic API key
+          <input class="key-input" data-key="claude" type="password" autocomplete="off" placeholder="sk-ant-…">
+        </label>
+        <label class="key-field" data-for="google" hidden>Google Cloud API key
+          <input class="key-input" data-key="google" type="password" autocomplete="off" placeholder="AIza…">
         </label>
       </div>
+      <label class="remember fine"><input type="checkbox" class="key-remember"> Remember my keys on this device</label>
       <p class="fine" id="engine-note"></p>
     </section>
 
