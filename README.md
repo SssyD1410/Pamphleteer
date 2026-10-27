@@ -20,8 +20,8 @@ Pamphleteer lays a book or article beside its translations. Upload the same work
   - *This browser:* Chrome's on-device translator. Free and private, but rougher.
   - *MyMemory:* free with no key, but basic and limited to about 5,000 characters a day.
   Keys are sent only to Anthropic or Google. They stay in the tab unless you tick "Remember my keys on this device".
-- **Hover over a sentence** to underline it and its counterpart in every other column. Sentences in the hovered row are paired by the same length-based aligner, and the underline uses the CSS Custom Highlight API, so the text isn't modified.
-- **Hover over a word** to see a short gloss. **Click it** to open the dictionary panel, which shows the sentence, a translation into each other language on the page, and the full Wiktionary entry.
+- **Hover over a sentence** to underline it and its counterpart in every other column. **On a phone:** tap once to underline a sentence and its translations; double-tap a word to double-underline it and open the dictionary. Sentences in the hovered row are paired by the same length-based aligner, and the underline uses the CSS Custom Highlight API, so the text isn't modified.
+- **Hover over a word** to double-underline it and see a short gloss. **Click it** to open the dictionary panel, which shows the sentence, a translation into each other language on the page, and the full Wiktionary entry.
   - With a Claude key, the word is translated *in its sentence*: the sense used here, its dictionary form, and a note on tense, case or idiom.
   - With a Google key, Google Translate is used.
   - Without a key, the free engines translate the word on its own.

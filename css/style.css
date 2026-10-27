@@ -424,3 +424,12 @@ select.tool { padding: 3px 4px; border: 1px solid var(--ink); }
 .dict-keys input[type=password] { display: block; width: 100%; margin-top: 2px; }
 .dict-retry { margin-top: 4px; }
 .remember { display: block; margin-top: 10px; }
+
+/* the word under the pointer (or double-tapped): double underline */
+::highlight(pamph-word) {
+  text-decoration: underline double;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--ink);
+}
+.pages { touch-action: manipulation; } /* no double-tap zoom, so double taps reach the page */

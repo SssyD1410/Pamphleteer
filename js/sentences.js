@@ -87,38 +87,87 @@ function counterpart(col, other, i) {
   return groups.find(([a]) => a.some((s) => s.i === i)) || [[], []];
 }
 
-export function attachSentenceHover(pages) {
-  if (!globalThis.CSS?.highlights || typeof Highlight === 'undefined') return;
-  const hl = new Highlight();
-  CSS.highlights.set('pamph-sentence', hl);
-  let lastCol = null, lastI = -1, frame = 0;
-  const clear = () => { hl.clear(); lastCol = null; lastI = -1; };
+// Two highlights: the sentence (single underline, in every column) and the word (double).
+const supported = !!globalThis.CSS?.highlights && typeof Highlight !== 'undefined';
+const sentenceHl = supported ? new Highlight() : null;
+const wordHl = supported ? new Highlight() : null;
+if (supported) {
+  wordHl.priority = 1;
+  CSS.highlights.set('pamph-sentence', sentenceHl);
+  CSS.highlights.set('pamph-word', wordHl);
+}
+let lastCol = null, lastI = -1;
 
+export function clearSentence() {
+  sentenceHl?.clear();
+  cut = null;
+  lastCol = null;
+  lastI = -1;
+}
+
+// Double-underline one word (a Range), or clear with null. The sentence underline is
+// cut around the word, otherwise the two decorations paint over each other.
+let cut = null; // { whole, parts } – the sentence range split around the word
+export function markWord(range) {
+  if (!wordHl) return;
+  wordHl.clear();
+  if (cut && sentenceHl.has(cut.parts[0])) {
+    cut.parts.forEach((r) => sentenceHl.delete(r));
+    sentenceHl.add(cut.whole);
+  }
+  cut = null;
+  if (!range) return;
+  wordHl.add(range);
+  for (const whole of sentenceHl) {
+    if (whole.compareBoundaryPoints(Range.START_TO_START, range) > 0 || whole.compareBoundaryPoints(Range.END_TO_END, range) < 0) continue;
+    const before = new Range(), after = new Range();
+    before.setStart(whole.startContainer, whole.startOffset);
+    before.setEnd(range.startContainer, range.startOffset);
+    after.setStart(range.endContainer, range.endOffset);
+    after.setEnd(whole.endContainer, whole.endOffset);
+    sentenceHl.delete(whole);
+    sentenceHl.add(before);
+    sentenceHl.add(after);
+    cut = { whole, parts: [before, after] };
+    break;
+  }
+}
+
+// Underline the sentence at a point and its counterparts in the other columns.
+// Returns false when the point is not on text.
+export function showSentenceAt(x, y, target) {
+  if (!supported) return false;
+  const p = target?.closest?.('.col p');
+  const c = p && caretAt(x, y);
+  if (!c || c.node.nodeType !== Node.TEXT_NODE || !p.contains(c.node)) return false;
+  const col = p.closest('.col');
+  const sent = sentenceAt(col, c.node, c.offset);
+  if (!sent) return false;
+  if (col === lastCol && sent.i === lastI) return true;
+  lastCol = col;
+  lastI = sent.i;
+  sentenceHl.clear();
+  cut = null;
+  const ix = columnIndex(col);
+  const mine = new Set([sent]);
+  for (const other of col.parentElement.querySelectorAll('.col')) {
+    if (other === col) continue;
+    const [a, b] = counterpart(col, other, sent.i);
+    a.forEach((s) => mine.add(s));
+    const oix = columnIndex(other);
+    for (const s of b) sentenceHl.add(rangeOf(oix, s));
+  }
+  for (const s of mine) sentenceHl.add(rangeOf(ix, s));
+  return true;
+}
+
+export function attachSentenceHover(pages) {
+  if (!supported) return;
+  let frame = 0;
   pages.addEventListener('mousemove', (e) => {
-    if (e.buttons) return;
+    if (e.buttons || e.sourceCapabilities?.firesTouchEvents) return; // taps are handled separately
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      const p = e.target.closest?.('.col p');
-      const c = p && caretAt(e.clientX, e.clientY);
-      if (!c || c.node.nodeType !== Node.TEXT_NODE || !p.contains(c.node)) return clear();
-      const col = p.closest('.col');
-      const sent = sentenceAt(col, c.node, c.offset);
-      if (!sent) return clear();
-      if (col === lastCol && sent.i === lastI) return;
-      lastCol = col;
-      lastI = sent.i;
-      hl.clear();
-      const ix = columnIndex(col);
-      const mine = new Set([sent]);
-      for (const other of col.parentElement.querySelectorAll('.col')) {
-        if (other === col) continue;
-        const [a, b] = counterpart(col, other, sent.i);
-        a.forEach((s) => mine.add(s));
-        const oix = columnIndex(other);
-        for (const s of b) hl.add(rangeOf(oix, s));
-      }
-      for (const s of mine) hl.add(rangeOf(ix, s));
-    });
+    frame = requestAnimationFrame(() => { if (!showSentenceAt(e.clientX, e.clientY, e.target)) clearSentence(); });
   });
-  pages.addEventListener('mouseleave', clear);
+  pages.addEventListener('mouseleave', () => { clearSentence(); markWord(null); });
 }

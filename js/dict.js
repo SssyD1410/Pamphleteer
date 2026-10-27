@@ -3,13 +3,13 @@
 // never wraps each word of a book in its own element.
 
 import { LANGUAGES, translateWord, wordEngine, ENGINE_NAMES, keys } from './translate.js';
-import { caretAt, sentenceAround } from './sentences.js';
+import { caretAt, sentenceAround, showSentenceAt, clearSentence, markWord } from './sentences.js';
 
 const segmenters = {};
 const segmenter = (lang) => (segmenters[lang] ||= new Intl.Segmenter(lang, { granularity: 'word' }));
 
 // Returns { word, lang, col, rect, context } for the word under (x, y), or null.
-export function wordAt(x, y) {
+export function wordAt(x, y, slack = 1) {
   const c = caretAt(x, y);
   if (!c || c.node.nodeType !== Node.TEXT_NODE) return null;
   const col = c.node.parentElement.closest('.col');
@@ -25,8 +25,8 @@ export function wordAt(x, y) {
     range.setEnd(c.node, end);
     // The caret snaps to the nearest character, so make sure the pointer is really on the word.
     for (const rect of range.getClientRects()) {
-      if (x >= rect.left - 1 && x <= rect.right + 1 && y >= rect.top - 1 && y <= rect.bottom + 1) {
-        return { word: seg.segment, lang, col: +col.dataset.k, rect, context: sentenceAround(c.node, seg.index) };
+      if (x >= rect.left - slack && x <= rect.right + slack && y >= rect.top - slack && y <= rect.bottom + slack) {
+        return { word: seg.segment, lang, col: +col.dataset.k, rect, range, context: sentenceAround(c.node, seg.index) };
       }
     }
     return null;
@@ -119,10 +119,11 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
   }
 
   pages.addEventListener('mousemove', (e) => {
-    if (e.buttons) return; // selecting text
+    if (e.buttons || lastPointer === 'touch') return; // selecting text, or a tap
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const hit = wordAt(e.clientX, e.clientY);
+      markWord(hit?.range || null);
       if (!hit) return hideGloss();
       const key = `${hit.lang}:${hit.word}:${targetFor(hit.lang)}`;
       if (key === hoverKey) return;
@@ -134,16 +135,36 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
   pages.addEventListener('mouseleave', hideGloss);
   addEventListener('scroll', hideGloss, { passive: true });
 
+  // Mouse: click a word for the dictionary. Touch (no hover): one tap underlines the
+  // sentence and its translations; a double tap marks the word and opens the dictionary.
+  let lastPointer = 'mouse', lastTap = null;
+  pages.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; }, { passive: true });
+  pages.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') lastPointer = 'mouse'; }, { passive: true });
+
   pages.addEventListener('click', (e) => {
+    if (lastPointer === 'touch') return onTap(e);
     if (!getSelection().isCollapsed) return; // the reader was selecting, not looking up
     const hit = wordAt(e.clientX, e.clientY);
     if (hit) { hideGloss(); openPanel(hit.word, hit.lang, hit.context); }
   });
 
+  function onTap(e) {
+    const now = performance.now();
+    const double = lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+    lastTap = double ? null : { t: now, x: e.clientX, y: e.clientY };
+    if (!showSentenceAt(e.clientX, e.clientY, e.target)) { clearSentence(); markWord(null); return; }
+    if (!double) { markWord(null); return; }
+    getSelection().removeAllRanges(); // some phones also select the word natively
+    const hit = wordAt(e.clientX, e.clientY, 6);
+    if (!hit) return;
+    markWord(hit.range);
+    openPanel(hit.word, hit.lang, hit.context);
+  }
+
   panel.addEventListener('click', (e) => {
     const x = e.target.closest('.xref');
     if (x) openPanel(x.dataset.w, panel.dataset.lang, '');
-    if (e.target.closest('.dict-close')) panel.hidden = true;
+    if (e.target.closest('.dict-close')) { panel.hidden = true; markWord(null); }
     if (e.target.closest('.dict-retry')) openPanel(panel.dataset.word, panel.dataset.lang, panel.dataset.context);
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.hidden = true; });
