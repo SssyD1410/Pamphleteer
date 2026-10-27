@@ -5,6 +5,7 @@ import { attachLookup, esc } from './dict.js';
 import { attachSentenceHover } from './sentences.js';
 import { maybeTour, runTour } from './tour.js';
 import { AIDS, RTL, annotate, prepare, ready } from './romanize.js';
+import { importLink } from './fetchurl.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const BATCH = 120; // rows added to the page per scroll step
@@ -40,6 +41,8 @@ function addSide() {
     input: $('input[type=file]', el),
     drop: $('.drop', el),
     paste: $('.paste', el),
+    linkForm: $('.link-form', el),
+    linkInput: $('.link-input', el),
     lang: $('.lang', el),
     info: $('.info', el),
     title: '',
@@ -63,7 +66,17 @@ function addSide() {
   });
   $('.paste-toggle', el).addEventListener('click', () => {
     s.paste.hidden = !s.paste.hidden;
+    s.linkForm.hidden = true;
     if (!s.paste.hidden) s.paste.focus();
+  });
+  $('.link-toggle', el).addEventListener('click', () => {
+    s.linkForm.hidden = !s.linkForm.hidden;
+    s.paste.hidden = true;
+    if (!s.linkForm.hidden) s.linkInput.focus();
+  });
+  s.linkForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadLink(s, s.linkInput.value);
   });
   let timer;
   s.paste.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => loadPasted(s), 250); });
@@ -108,6 +121,8 @@ function clearSide(s) {
   s.input.value = '';
   s.paste.value = '';
   s.paste.hidden = true;
+  s.linkInput.value = '';
+  s.linkForm.hidden = true;
   $('.drop-title', s.drop).textContent = 'Choose a file';
   $('.drop-hint', s.drop).textContent = 'or drop it here';
   s.drop.classList.remove('filled');
@@ -142,6 +157,46 @@ async function load(s, file) {
     s.paras = null;
     s.info.textContent = '';
     status(err.message, true);
+  }
+  s.busy = false;
+  refresh();
+}
+
+// An article or book from a web link (see fetchurl.js for how it is fetched).
+async function loadLink(s, raw) {
+  const id = ++s.loads;
+  s.busy = true;
+  s.paras = null;
+  s.paste.value = '';
+  s.paste.hidden = true;
+  s.input.value = '';
+  let host = raw.trim();
+  try { host = new URL(/^https?:/i.test(host) ? host : 'https://' + host).hostname; } catch { /* reported below */ }
+  $('.drop-title', s.drop).textContent = host || 'Link';
+  $('.drop-hint', s.drop).textContent = 'from the web';
+  s.drop.classList.add('filled');
+  status('');
+  refresh();
+  try {
+    const got = await importLink(raw, {
+      progress: (msg, frac) => { if (id === s.loads) s.info.textContent = msg + (frac ? ` (${Math.round(frac * 100)}%)` : ''); },
+    });
+    if (id !== s.loads) return;
+    s.paras = got.paras;
+    s.title = got.title;
+    $('.drop-title', s.drop).textContent = got.title;
+    $('.drop-hint', s.drop).textContent = `from ${got.via}`;
+    s.lang.value = LANGUAGES[got.lang] ? got.lang : guessLanguage(s.paras.slice(0, 300).map((p) => p.t).join(' '));
+    s.info.textContent = `${fmt(s.paras.length)} paragraphs · ${fmt(charCount(s.paras))} characters`;
+    s.linkForm.hidden = true;
+  } catch (err) {
+    if (id !== s.loads) return;
+    s.paras = null;
+    s.info.textContent = '';
+    $('.drop-title', s.drop).textContent = 'Choose a file';
+    $('.drop-hint', s.drop).textContent = 'or drop it here';
+    s.drop.classList.remove('filled');
+    status(err.message || String(err), true);
   }
   s.busy = false;
   refresh();

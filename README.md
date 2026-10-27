@@ -13,6 +13,12 @@ Pamphleteer lays a book or article beside its translations. Upload the same work
 - **× remove** next to an upload clears that side.
 - **Nothing is uploaded.** Files are read in the browser. It's a static site with no server and no build step.
 - **Formats:** PDF, EPUB, DOCX, HTML, FB2, Markdown, SRT and plain text. Each side can use a different format, and you can paste text instead.
+- **Links:** *or add a link* fetches an article, a Wikipedia page or an online book. A web page can't read other sites unless they allow it, so a link is tried three ways:
+  1. **Wikipedia, Wikisource** and other Wikimedia sites, through their open API. References, infoboxes and source lists are dropped, and the language comes from the address.
+  2. **The site itself**, when it allows reading from other pages.
+  3. Otherwise the free [r.jina.ai](https://jina.ai/reader) reader fetches it. That service sees the link, and allows about 20 links a minute.
+
+  Web pages are cut down to the article with Mozilla's [Readability](https://github.com/mozilla/readability), the engine behind Firefox's Reader View. Links to PDF, EPUB, Word or text files go through the normal file readers. Pages behind a login or paywall can't be read; save them and upload the file instead.
 - **Cheap on big books.** Parsers load only when a format needs them (pdf.js, JSZip, mammoth). Alignment is two cheap passes:
   1. Each text is aligned to the first one. Chapters are matched by their numbers (*Chapter IV* ↔ *Chapitre IV*). Tables of contents are skipped.
   2. Inside each chapter, paragraphs are paired by a banded Gale–Church style alignment on paragraph length, allowing 1–1, 1–2, 2–1, 2–2 and 1–3 groupings. Very long texts without chapters fall back to a single linear pass.
@@ -66,6 +72,7 @@ js/dict.js        hover gloss + Wiktionary dictionary panel
 js/sentences.js   hovered-sentence underline across columns
 js/tour.js        first-visit guided tour
 js/romanize.js    reading aids: pinyin, furigana/romaji, romanization rules
+js/fetchurl.js    import from a link (Wikimedia API, direct, reader service + Readability)
 js/app.js         upload UI and the scrolling reader
 assets/           favicons and social images
 samples/          public-domain test texts

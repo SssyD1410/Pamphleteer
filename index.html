@@ -52,9 +52,15 @@
         </label>
         <div class="side-actions">
           <button type="button" class="link paste-toggle">or paste text</button>
+          <button type="button" class="link link-toggle">or add a link</button>
           <button type="button" class="link clear-file" hidden>× remove</button>
         </div>
         <textarea class="paste" hidden placeholder="Paste text here…"></textarea>
+        <form class="link-form" hidden>
+          <input type="url" class="link-input" placeholder="https://… an article, a Wikipedia page, a book" autocomplete="off">
+          <button type="submit" class="tool">Fetch</button>
+          <p class="fine">Wikipedia and sites that allow it are read directly. Others go through the free <a href="https://jina.ai/reader" target="_blank" rel="noopener">r.jina.ai</a> reader, which sees the link but nothing else.</p>
+        </form>
         <div class="meta">
           <label>Language <select class="lang"></select></label>
           <span class="info"></span>

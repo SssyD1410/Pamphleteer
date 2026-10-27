@@ -521,3 +521,19 @@ select.tool { padding: 3px 4px; border: 1px solid var(--ink); }
 .dict-rom { margin: -8px 0 10px; font-style: italic; color: var(--faint); }
 .dict-rom:empty { display: none; }
 .dict-listen { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+
+/* ---------- add from a link ---------- */
+.side-actions { flex-wrap: wrap; }
+.link-form { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.link-form[hidden] { display: none; }
+.link-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  font-size: 0.9em;
+}
+.link-form .fine { flex-basis: 100%; margin: 2px 0 0; }
+.link-form .fine a { color: inherit; }

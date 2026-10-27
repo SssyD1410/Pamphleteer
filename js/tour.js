@@ -13,7 +13,7 @@ export const TOURS = {
     {
       target: '#sides',
       title: 'Upload each language',
-      text: 'Add the same work in two languages: PDF, EPUB, Word, HTML or plain text, or paste the text. Check the language under each side. “× remove” clears a side.',
+      text: 'Add the same work in two languages: PDF, EPUB, Word, HTML or plain text. You can also paste the text, or give a link to an article, a Wikipedia page or an online book. Check the language under each side. “× remove” clears a side.',
     },
     {
       target: '#add-side',
