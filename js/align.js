@@ -195,8 +195,13 @@ export const pairOneToOne = (L, R) => ({ rows: L.map((p, k) => [[p], [R[k]]]), c
 // in real translations, paired rows have lengths in about the same proportion as the
 // whole texts. Measured on Alice EN/FR/DE, 1–2% of the text misfits; a different book,
 // shuffled paragraphs or half a book misfit 16–38%.
-const charsOf = (ps) => ps.reduce((s, p) => s + p.t.length, 0);
+// Chinese and Japanese say in one character what Latin scripts take about three letters for,
+// so lengths are compared in "letter equivalents".
+const CJK = /[぀-ヿ㐀-鿿가-힯\uf900-\ufaff]/g;
+const charsOf = (ps) => ps.reduce((s, p) => s + p.t.length + 2 * (p.t.match(CJK)?.length || 0), 0);
 export function matchReport(L, R, rows, chapters) {
+  // Too little text to judge (a poem, a paragraph): say nothing rather than guess.
+  if (rows.length < 8 || Math.min(charsOf(L), charsOf(R)) < 3000) return { share: 0, ratio: 1, reasons: [] };
   const c = charsOf(R) / Math.max(1, charsOf(L));
   let misfit = 0, total = 0;
   for (const [a, b] of rows) {

@@ -57,6 +57,11 @@ export const TOURS = {
       text: 'Change the typeface and size, hide or reorder languages with the EN · FR buttons, and choose which language glosses appear in.',
     },
     {
+      target: '#aids',
+      title: 'Reading aids',
+      text: 'Show pronunciation above the text: pinyin for Chinese, furigana or romaji for Japanese, Latin letters for Korean, Russian, Greek, Arabic, Hebrew and Hindi. In the dictionary, ▶ Listen reads a word or sentence aloud.',
+    },
+    {
       target: '#pdf',
       title: 'Keep a copy',
       text: 'Save the whole parallel text as a web page (HTML) or as a PDF.',

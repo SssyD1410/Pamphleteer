@@ -4,6 +4,7 @@ import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate, keys, se
 import { attachLookup, esc } from './dict.js';
 import { attachSentenceHover } from './sentences.js';
 import { maybeTour, runTour } from './tour.js';
+import { AIDS, RTL, annotate, prepare, ready } from './romanize.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const BATCH = 120; // rows added to the page per scroll step
@@ -278,10 +279,15 @@ $('#go').addEventListener('click', async () => {
 
 // _underscores_ are the plain-text convention for italics (Project Gutenberg, Markdown).
 const prose = (s) => esc(s).replace(/(^|[\s(“"«»])_([^_\n]+)_(?=$|[\s.,;:!?)”"»«—-])/g, '$1<em>$2</em>');
-const parasHtml = (ps) => ps.map((p) => {
+// `aid` is a reading aid to draw above the text (pinyin, furigana, romanization), or ''.
+const parasHtml = (ps, lang, aid) => ps.map((p) => {
   const cls = p.h ? ' class="h"' : p.t.includes('\n') ? ' class="v"' : '';
-  return `<p${cls}>${prose(p.t)}</p>`;
+  return `<p${cls}>${aid ? annotate(p.t, lang, aid) : prose(p.t)}</p>`;
 }).join('');
+
+// Reading aids switched on, per language, remembered between visits: { zh: 'pinyin', ja: 'furigana' }.
+const aids = (() => { try { return JSON.parse(localStorage.getItem('pamphleteer.aids') || '{}'); } catch { return {}; } })();
+const aidFor = (lang) => (aids[lang] && ready(lang) ? aids[lang] : '');
 
 let current = null;
 let observer = null;
@@ -291,7 +297,11 @@ const shownColumns = () => current.order.filter((k) => !current.hidden.has(k));
 
 function rowHtml(row, k) {
   const chapter = k > 0 && row.some((col) => col[0]?.h) ? ' chapter' : '';
-  const cols = shownColumns().map((c) => `<div class="col" data-k="${c}" lang="${current.columns[c].lang}">${parasHtml(row[c])}</div>`);
+  const cols = shownColumns().map((c) => {
+    const lang = current.columns[c].lang;
+    const aid = aidFor(lang);
+    return `<div class="col${aid ? ' aided' : ''}" data-k="${c}" lang="${lang}"${RTL.has(lang) ? ' dir="rtl"' : ''}>${parasHtml(row[c], lang, aid)}</div>`;
+  });
   return `<div class="row${chapter}">${cols.join('')}</div>`;
 }
 
@@ -364,6 +374,7 @@ $('#notice').addEventListener('click', (e) => {
 function openReader(rows, columns) {
   $('#notice').hidden = true;
   setTimeout(() => maybeTour('reader'), 400); // after the first rows are laid out
+  setTimeout(() => { buildAidsMenu(); restoreAids(); });
   current = { rows, columns, order: columns.map((_, k) => k), hidden: new Set(), shown: 0, page: 0 };
   current.pages = paginate(rows, columns.length);
   $('#setup').hidden = true;
@@ -572,5 +583,45 @@ $('#pdf').addEventListener('click', async () => {
 });
 
 $('#help').addEventListener('click', () => runTour('reader'));
+
+// ---------- reading aids menu ----------
+
+function buildAidsMenu() {
+  const langs = [...new Set(current.columns.map((c) => c.lang))].filter((l) => AIDS[l]);
+  $('#aids').hidden = !langs.length;
+  $('#aids-menu').innerHTML = langs.map((l) => `
+    <fieldset><legend>${esc(LANGUAGES[l] || l)}</legend>
+      <label><input type="radio" name="aid-${l}" value="" ${!aids[l] ? 'checked' : ''}> Off</label>
+      ${AIDS[l].map(([mode, label]) => `<label><input type="radio" name="aid-${l}" value="${mode}" ${aids[l] === mode ? 'checked' : ''}> ${esc(label)}</label>`).join('')}
+    </fieldset>`).join('') + `<p class="fine aids-status">${langs.includes('ja') ? 'Japanese aids download a dictionary (about 18 MB) the first time.' : ''}</p>`;
+}
+
+$('#aids').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('#aids-menu').hidden = !$('#aids-menu').hidden;
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#aids-menu, #aids')) $('#aids-menu').hidden = true;
+});
+$('#aids-menu').addEventListener('change', async (e) => {
+  const lang = e.target.name?.replace(/^aid-/, '');
+  if (!lang) return;
+  aids[lang] = e.target.value;
+  try { localStorage.setItem('pamphleteer.aids', JSON.stringify(aids)); } catch { /* storage blocked */ }
+  if (aids[lang] && !ready(lang)) {
+    const note = $('.aids-status');
+    note.textContent = `Loading ${LANGUAGES[lang]} reading aids…`;
+    try { await prepare(lang); note.textContent = ''; } catch { note.textContent = 'Could not load the reading aids. Check your connection.'; return; }
+  }
+  rerender();
+});
+
+// Aids remembered from an earlier visit: load what they need, then redraw.
+async function restoreAids() {
+  const want = [...new Set(current.columns.map((c) => c.lang))].filter((l) => aids[l] && !ready(l));
+  if (!want.length) return;
+  await Promise.all(want.map((l) => prepare(l).catch(() => {})));
+  if (current) rerender();
+}
 $('#setup-help').addEventListener('click', () => runTour('setup'));
 maybeTour('setup');

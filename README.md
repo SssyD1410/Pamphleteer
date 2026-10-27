@@ -30,6 +30,13 @@ Pamphleteer lays a book or article beside its translations. Upload the same work
   - Without a key, the free engines translate the word on its own.
   - Definitions come from the English Wiktionary REST API (free, no key).
   - Words and sentences are found from the pointer position on demand, so the page never wraps each word of a book in its own element.
+- **Reading aids** (the *Aids* button, shown when a column needs it) draw pronunciation above the text, word by word:
+  - *Chinese:* pinyin with tones, through [pinyin-pro](https://github.com/zh-lx/pinyin-pro), which picks the right reading for characters that have several.
+  - *Japanese:* furigana in hiragana over the kanji only, or romaji, from the [kuromoji](https://github.com/takuyaa/kuromoji.js) dictionary. It's an 18 MB download the first time.
+  - *Korean* (Revised Romanization, with linking and nasal sound changes), *Russian* and *Ukrainian* (Latin letters), *Greek* (ELOT 743 with stress marks), *Arabic* and *Hebrew* (transliteration, using vowel marks when the text has them) and *Hindi* (IAST, with the silent final *a* dropped). These follow built-in rules, with no download.
+  - Arabic and Hebrew columns are set right to left.
+  - The hover gloss and the dictionary show the word's romanization. The dictionary's **▶ Listen** reads the word or the whole sentence aloud with your device's voices.
+  - Aids are remembered between visits and appear in HTML and PDF exports.
 - **Typefaces:** EB Garamond, Cormorant, Libre Baskerville, Crimson Pro, Old Standard, Noto Serif (with Chinese and Japanese) or the system serif. Your choice is remembered.
 - **Columns** can be hidden, shown or rotated from the toolbar.
 - **HTML** downloads the parallel text as one self-contained web page.
@@ -58,6 +65,7 @@ js/translate.js   short-text and single-word translation
 js/dict.js        hover gloss + Wiktionary dictionary panel
 js/sentences.js   hovered-sentence underline across columns
 js/tour.js        first-visit guided tour
+js/romanize.js    reading aids: pinyin, furigana/romaji, romanization rules
 js/app.js         upload UI and the scrolling reader
 assets/           favicons and social images
 samples/          public-domain test texts

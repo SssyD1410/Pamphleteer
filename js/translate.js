@@ -31,8 +31,8 @@ export function guessLanguage(sample) {
   const s = sample.slice(0, 20000);
   const scripts = [
     ['ja', /[぀-ヿ]/g], ['ko', /[가-힯]/g], ['zh', /[一-鿿]/g],
-    ['ar', /[؀-ۿ]/g], ['he', /[֐-׿]/g], ['el', /[Ͱ-Ͽ]/g],
-    ['hi', /[ऀ-ॿ]/g], ['ru', /[Ѐ-ӿ]/g],
+    ['ar', /[\u0600-ۿ]/g], ['he', /[֐-׿]/g], ['el', /[Ͱ-Ͽ]/g],
+    ['hi', /[\u0900-ॿ]/g], ['ru', /[Ѐ-ӿ]/g],
   ];
   for (const [code, re] of scripts) if ((s.match(re) || []).length > s.length * 0.15) {
     if (code === 'ru' && /[їєі]/i.test(s)) return 'uk';

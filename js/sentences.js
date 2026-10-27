@@ -24,7 +24,9 @@ function columnIndex(col) {
   const nodes = [];
   let text = '';
   for (const p of col.querySelectorAll('p')) {
-    const walk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    const walk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.parentElement.closest('rt') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       nodes.push({ node: n, start: text.length });
       text += n.data;

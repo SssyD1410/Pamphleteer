@@ -4,6 +4,7 @@
 
 import { LANGUAGES, translateWord, wordEngine, ENGINE_NAMES, keys } from './translate.js';
 import { caretAt, sentenceAround, showSentenceAt, clearSentence, markWord } from './sentences.js';
+import { romanizeForGloss } from './romanize.js';
 
 const segmenters = {};
 const segmenter = (lang) => (segmenters[lang] ||= new Intl.Segmenter(lang, { granularity: 'word' }));
@@ -12,6 +13,7 @@ const segmenter = (lang) => (segmenters[lang] ||= new Intl.Segmenter(lang, { gra
 export function wordAt(x, y, slack = 1) {
   const c = caretAt(x, y);
   if (!c || c.node.nodeType !== Node.TEXT_NODE) return null;
+  if (c.node.parentElement.closest('rt')) return null; // the pronunciation line, not the text
   const col = c.node.parentElement.closest('.col');
   if (!col) return null;
   const lang = col.lang;
@@ -83,6 +85,27 @@ function clean(html) {
 
 export const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// ---------- reading aloud ----------
+
+const canSpeak = () => 'speechSynthesis' in self;
+// false only when the voice list has loaded and holds nothing for this language.
+const hasVoice = (lang) => {
+  const voices = speechSynthesis.getVoices();
+  return !voices.length || voices.some((v) => v.lang.toLowerCase().startsWith(lang));
+};
+
+// Picks a voice for the language when the system has one; otherwise the browser chooses.
+function speak(text, lang) {
+  if (!canSpeak() || !text) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang;
+  const voice = speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith(lang));
+  if (voice) u.voice = voice;
+  u.rate = 0.9;
+  speechSynthesis.speak(u);
+}
+
 // ---------- hover gloss and dictionary panel ----------
 
 export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
@@ -99,7 +122,11 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
   async function showGloss(hit) {
     const to = targetFor(hit.lang);
     const key = `${hit.lang}:${hit.word}:${to}`;
-    gloss.innerHTML = `<b lang="${hit.lang}">${esc(hit.word)}</b><span class="g-tr">…</span><span class="g-def"></span>`;
+    gloss.innerHTML = `<b lang="${hit.lang}">${esc(hit.word)}</b><span class="g-rom"></span><span class="g-tr">…</span><span class="g-def"></span>`;
+    romanizeForGloss(hit.word, hit.lang).then((rom) => {
+      const el = hoverKey === key && gloss.querySelector('.g-rom');
+      if (el) el.textContent = rom;
+    });
     gloss.hidden = false;
     const r = hit.rect;
     const top = r.bottom + 8 + gloss.offsetHeight > innerHeight ? r.top - gloss.offsetHeight - 8 : r.bottom + 8;
@@ -164,7 +191,9 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
   panel.addEventListener('click', (e) => {
     const x = e.target.closest('.xref');
     if (x) openPanel(x.dataset.w, panel.dataset.lang, '');
-    if (e.target.closest('.dict-close')) { panel.hidden = true; markWord(null); }
+    if (e.target.closest('.dict-close')) { panel.hidden = true; markWord(null); speechSynthesis?.cancel(); }
+    if (e.target.closest('.say-word')) speak(panel.dataset.word, panel.dataset.lang);
+    if (e.target.closest('.say-sentence')) speak(panel.dataset.context, panel.dataset.lang);
     if (e.target.closest('.dict-retry')) openPanel(panel.dataset.word, panel.dataset.lang, panel.dataset.context);
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.hidden = true; });
@@ -180,6 +209,10 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
       <button class="dict-close tool" aria-label="Close">×</button>
       <p class="dict-lang">${esc(LANGUAGES[lang] || lang)}</p>
       <h2 class="dict-word" lang="${lang}">${esc(word)}</h2>
+      <p class="dict-rom"></p>
+      ${!canSpeak() ? '' : hasVoice(lang)
+        ? `<p class="dict-listen"><button type="button" class="tool say-word">▶ Listen</button>${context ? ' <button type="button" class="tool say-sentence">▶ Listen to the sentence</button>' : ''}</p>`
+        : `<p class="fine">To hear ${esc(LANGUAGES[lang] || lang)} read aloud, add a ${esc(LANGUAGES[lang] || lang)} voice in your system’s speech settings.</p>`}
       ${context ? `<blockquote class="dict-context" lang="${lang}">${esc(context).replace(esc(word), `<mark>${esc(word)}</mark>`)}</blockquote>` : ''}
       <section><h3>Translation <span class="src">${esc(ENGINE_NAMES[wordEngine()])}</span></h3><dl class="dict-tr">${others.map((l) =>
         `<dt>${esc(LANGUAGES[l] || l)}</dt><dd data-l="${l}" lang="${l}">…</dd>`).join('')}</dl><p class="dict-note fine"></p></section>
@@ -199,6 +232,10 @@ export function attachLookup({ pages, gloss, panel, columns, glossTarget }) {
       </details>`;
     panel.hidden = false;
     panel.scrollTop = 0;
+    romanizeForGloss(word, lang).then((rom) => {
+      const el = panel.dataset.word === word && panel.querySelector('.dict-rom');
+      if (el) el.textContent = rom;
+    });
 
     let noted = false;
     for (const l of others) {

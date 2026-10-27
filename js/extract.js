@@ -44,7 +44,7 @@ function stripGutenberg(text) {
 }
 
 export function paragraphsFromText(text) {
-  text = stripGutenberg(text.replace(/\r\n?/g, '\n').replace(/^﻿/, ''));
+  text = stripGutenberg(text.replace(/\r\n?/g, '\n').replace(/^\ufeff/, ''));
   const out = [];
   for (const block of text.split(/\n[ \t]*\n+/)) {
     const lines = block.split('\n').map(clean).filter(Boolean);
