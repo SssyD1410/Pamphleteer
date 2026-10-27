@@ -2,9 +2,9 @@
 // dictionary entry. Words are found from the pointer position on demand, so the page
 // never wraps each word of a book in its own element.
 
-import { LANGUAGES, translateWord, wordEngine, ENGINE_NAMES, keys } from './translate.js';
-import { caretAt, sentenceAround, showSentenceAt, clearSentence, markWord } from './sentences.js';
-import { romanizeForGloss } from './romanize.js';
+import { LANGUAGES, translateWord, wordEngine, ENGINE_NAMES, keys } from './translate.js?v=f683cc6816';
+import { caretAt, sentenceAround, showSentenceAt, clearSentence, markWord } from './sentences.js?v=f683cc6816';
+import { romanizeForGloss } from './romanize.js?v=f683cc6816';
 
 const segmenters = {};
 const segmenter = (lang) => (segmenters[lang] ||= new Intl.Segmenter(lang, { granularity: 'word' }));

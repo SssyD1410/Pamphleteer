@@ -1,4 +1,4 @@
-import { isHeadingLine } from './extract.js';
+import { isHeadingLine } from './extract.js?v=f683cc6816';
 
 // Collages two paragraph lists into rows of [leftParas, rightParas].
 // Linear time: chapters are matched first, then paragraphs inside each chapter

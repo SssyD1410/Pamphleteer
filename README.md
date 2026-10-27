@@ -60,6 +60,20 @@ python -m http.server 8000
 
 Then open http://localhost:8000. Any static file server works.
 
+## Releasing
+
+GitHub Pages lets browsers cache files for ten minutes. If a visitor gets a new `index.html` with an old `app.js`, new buttons silently do nothing. So every local script and stylesheet reference carries a fingerprint of the code (`?v=…`). Before committing a change to `js/` or `css/`, run:
+
+```bash
+python tools/stamp.py
+```
+
+To have git run it for you on every commit, turn on the included hook once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## Layout
 
 ```
@@ -76,6 +90,7 @@ js/fetchurl.js    import from a link (Wikimedia API, direct, reader service + Re
 js/app.js         upload UI and the scrolling reader
 assets/           favicons and social images
 samples/          public-domain test texts
+tools/stamp.py    cache-busting stamps for script and style references
 ```
 
 ## License

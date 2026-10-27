@@ -6,7 +6,7 @@
 // Web pages are then cut down to the article itself with Mozilla's Readability
 // (the engine behind Firefox's Reader View), so menus, ads and comments are left out.
 
-import { extract, paragraphsFromDom, paragraphsFromText } from './extract.js';
+import { extract, paragraphsFromDom, paragraphsFromText } from './extract.js?v=f683cc6816';
 
 const READABILITY = 'https://cdn.jsdelivr.net/npm/@mozilla/readability@0.6.0/+esm';
 const READER = 'https://r.jina.ai/';

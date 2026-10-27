@@ -2,7 +2,7 @@
 // counterpart in every other column. Sentences are found and paired only for the row
 // being hovered, and drawn with the CSS Custom Highlight API, so the text is never rewrapped.
 
-import { alignUnits } from './align.js';
+import { alignUnits } from './align.js?v=f683cc6816';
 
 const segmenters = {};
 const sentenceSegmenter = (lang) => (segmenters[lang] ||= new Intl.Segmenter(lang, { granularity: 'sentence' }));

@@ -1,11 +1,11 @@
-import { ACCEPT, extract, paragraphsFromText, charCount } from './extract.js';
-import { collageMany } from './align.js';
-import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate, keys, setKeys } from './translate.js';
-import { attachLookup, esc } from './dict.js';
-import { attachSentenceHover } from './sentences.js';
-import { maybeTour, runTour } from './tour.js';
-import { AIDS, RTL, annotate, prepare, ready } from './romanize.js';
-import { importLink } from './fetchurl.js';
+import { ACCEPT, extract, paragraphsFromText, charCount } from './extract.js?v=f683cc6816';
+import { collageMany } from './align.js?v=f683cc6816';
+import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate, keys, setKeys } from './translate.js?v=f683cc6816';
+import { attachLookup, esc } from './dict.js?v=f683cc6816';
+import { attachSentenceHover } from './sentences.js?v=f683cc6816';
+import { maybeTour, runTour } from './tour.js?v=f683cc6816';
+import { AIDS, RTL, annotate, prepare, ready } from './romanize.js?v=f683cc6816';
+import { importLink } from './fetchurl.js?v=f683cc6816';
 
 const $ = (s, root = document) => root.querySelector(s);
 const BATCH = 120; // rows added to the page per scroll step
@@ -588,7 +588,7 @@ $('#back').addEventListener('click', () => {
 $('#download').addEventListener('click', async () => {
   const c = current;
   if (!c) return;
-  const css = await fetch('css/style.css').then((r) => r.text());
+  const css = await fetch('css/style.css?v=f683cc6816').then((r) => r.text());
   const parts = [];
   for (let k = 0; k < c.rows.length; k++) parts.push(rowHtml(c.rows[k], k));
   const title = esc($('#titles').textContent);

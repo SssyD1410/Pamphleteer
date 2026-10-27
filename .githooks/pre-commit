@@ -1,0 +1,4 @@
+#!/bin/sh
+# Keep cache-busting stamps in step with the code (see tools/stamp.py).
+python tools/stamp.py >/dev/null || exit 1
+git add index.html js/*.js
