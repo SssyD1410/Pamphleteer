@@ -3,6 +3,7 @@ import { collageMany } from './align.js';
 import { LANGUAGES, TRANSLATE_LIMIT, guessLanguage, engines, translate, keys, setKeys } from './translate.js';
 import { attachLookup, esc } from './dict.js';
 import { attachSentenceHover } from './sentences.js';
+import { maybeTour, runTour } from './tour.js';
 
 const $ = (s, root = document) => root.querySelector(s);
 const BATCH = 120; // rows added to the page per scroll step
@@ -43,6 +44,7 @@ function addSide() {
     title: '',
     paras: null,
     busy: false,
+    loads: 0, // bumps on every new load or removal, so a late result is dropped
   };
   s.lang.innerHTML = langOptions;
   s.lang.value = DEFAULT_LANGS.find((l) => !sides.some((o) => o.lang.value === l)) || 'en';
@@ -65,6 +67,7 @@ function addSide() {
   let timer;
   s.paste.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => loadPasted(s), 250); });
   s.lang.addEventListener('change', refresh);
+  $('.clear-file', el).addEventListener('click', () => clearSide(s));
   $('.remove-side', el).addEventListener('click', () => {
     sides.splice(sides.indexOf(s), 1);
     el.remove();
@@ -96,7 +99,26 @@ const status = (msg, isError = false) => {
 
 const fmt = (n) => n.toLocaleString();
 
+function clearSide(s) {
+  s.loads++;
+  s.busy = false;
+  s.paras = null;
+  s.title = '';
+  s.input.value = '';
+  s.paste.value = '';
+  s.paste.hidden = true;
+  $('.drop-title', s.drop).textContent = 'Choose a file';
+  $('.drop-hint', s.drop).textContent = 'or drop it here';
+  s.drop.classList.remove('filled');
+  s.info.textContent = '';
+  status('');
+  refresh();
+}
+
 async function load(s, file) {
+  const id = ++s.loads;
+  s.paste.value = '';
+  s.paste.hidden = true;
   s.busy = true;
   s.paras = null;
   s.title = file.name.replace(/\.[^.]+$/, '');
@@ -105,14 +127,17 @@ async function load(s, file) {
   s.drop.classList.add('filled');
   refresh();
   try {
-    s.paras = await extract(file, (msg, frac) => {
-      s.info.textContent = msg + (frac ? ` (${Math.round(frac * 100)}%)` : '');
+    const paras = await extract(file, (msg, frac) => {
+      if (id === s.loads) s.info.textContent = msg + (frac ? ` (${Math.round(frac * 100)}%)` : '');
     });
+    if (id !== s.loads) return; // removed or replaced while reading
+    s.paras = paras;
     if (!s.paras.length) throw new Error('No readable text found in ' + file.name + '. Scanned PDFs need OCR first.');
     s.lang.value = guessLanguage(s.paras.slice(0, 300).map((p) => p.t).join(' '));
     s.info.textContent = `${fmt(s.paras.length)} paragraphs · ${fmt(charCount(s.paras))} characters`;
     status('');
   } catch (err) {
+    if (id !== s.loads) return;
     s.paras = null;
     s.info.textContent = '';
     status(err.message, true);
@@ -123,6 +148,14 @@ async function load(s, file) {
 
 function loadPasted(s) {
   const text = s.paste.value.trim();
+  if (text && s.drop.classList.contains('filled')) { // pasting replaces an uploaded file
+    s.loads++;
+    s.busy = false;
+    s.input.value = '';
+    $('.drop-title', s.drop).textContent = 'Choose a file';
+    $('.drop-hint', s.drop).textContent = 'or drop it here';
+    s.drop.classList.remove('filled');
+  }
   s.paras = text ? paragraphsFromText(text) : null;
   s.title = text ? SIDE_NAMES[sides.indexOf(s)] : '';
   if (s.paras) {
@@ -134,6 +167,7 @@ function loadPasted(s) {
 
 function refresh() {
   if (!sides.length) return;
+  for (const s of sides) $('.clear-file', s.el).hidden = !(s.paras || s.busy || s.paste.value.trim());
   const first = sides[0];
   const busy = sides.some((s) => s.busy);
   const empty = sides.slice(1).filter((s) => !s.paras);
@@ -228,9 +262,11 @@ $('#go').addEventListener('click', async () => {
     }
     status('Collaging…');
     await new Promise((r) => setTimeout(r)); // let the status paint before the alignment pass
-    const { rows } = collageMany(first.paras, others);
+    const { rows, reports } = collageMany(first.paras, others);
     status('');
-    openReader(rows, [{ title: first.title, lang: first.lang.value }, ...others.map(({ title, lang }) => ({ title, lang }))]);
+    const columns = [{ title: first.title, lang: first.lang.value }, ...others.map(({ title, lang }) => ({ title, lang }))];
+    openReader(rows, columns);
+    showMismatch(mismatchNotes(columns, reports));
   } catch (err) {
     const friendly = { 401: 'That Anthropic API key was rejected. Check it and try again.', 429: 'Claude is rate-limiting this key; wait a minute and try again.' };
     status(friendly[err.status] || err.message || String(err), true);
@@ -288,7 +324,46 @@ function pageLabel(c, [start], i) {
   return `${i + 1}. ${name}`.slice(0, 80);
 }
 
+// Plain-language reasons the uploaded texts may not be the same work.
+function mismatchNotes(columns, reports) {
+  const notes = [];
+  const name = (c) => `<em>${esc(c.title)}</em> (${esc(LANGUAGES[c.lang] || c.lang)})`;
+  reports.forEach((r, k) => {
+    if (!r) return; // translated here, so it matches by construction
+    const a = columns[0], b = columns[k + 1];
+    for (const why of r.reasons) {
+      if (why.kind === 'fit') notes.push(`Only about ${Math.round((1 - why.share) * 100)}% of ${name(b)} lines up with ${name(a)}. Paragraphs don’t correspond, so the columns will drift apart.`);
+      if (why.kind === 'length') {
+        const [long, short, x] = why.ratio > 1 ? [b, a, why.ratio] : [a, b, 1 / why.ratio];
+        notes.push(`${name(long)} is ${x.toFixed(1)}× as long as ${name(short)}. One may be abridged, or only part of the book.`);
+      }
+      if (why.kind === 'chapters') notes.push(`The chapter headings of ${name(a)} and ${name(b)} don’t correspond.`);
+    }
+  });
+  const seen = new Map();
+  for (const c of columns) {
+    if (seen.has(c.lang)) notes.push(`${name(seen.get(c.lang))} and ${name(c)} are both set to ${esc(LANGUAGES[c.lang] || c.lang)}. Check the language, or whether the same file was uploaded twice.`);
+    else seen.set(c.lang, c);
+  }
+  return notes;
+}
+
+function showMismatch(notes) {
+  const box = $('#notice');
+  box.hidden = !notes.length;
+  if (!notes.length) return;
+  box.innerHTML = `<p class="notice-title">These texts may not match</p><ul>${notes.map((n) => `<li>${n}</li>`).join('')}</ul>
+    <p class="notice-actions"><button type="button" class="tool notice-back">Choose other files</button> <button type="button" class="link notice-close">Read anyway</button></p>`;
+}
+
+$('#notice').addEventListener('click', (e) => {
+  if (e.target.closest('.notice-close')) $('#notice').hidden = true;
+  if (e.target.closest('.notice-back')) $('#back').click();
+});
+
 function openReader(rows, columns) {
+  $('#notice').hidden = true;
+  setTimeout(() => maybeTour('reader'), 400); // after the first rows are laid out
   current = { rows, columns, order: columns.map((_, k) => k), hidden: new Set(), shown: 0, page: 0 };
   current.pages = paginate(rows, columns.length);
   $('#setup').hidden = true;
@@ -495,3 +570,7 @@ $('#pdf').addEventListener('click', async () => {
   page.remove();
   book.remove();
 });
+
+$('#help').addEventListener('click', () => runTour('reader'));
+$('#setup-help').addEventListener('click', () => runTour('setup'));
+maybeTour('setup');

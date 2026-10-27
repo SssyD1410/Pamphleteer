@@ -50,7 +50,10 @@
           <span class="drop-title">Choose a file</span>
           <span class="drop-hint">or drop it here</span>
         </label>
-        <button type="button" class="link paste-toggle">or paste text</button>
+        <div class="side-actions">
+          <button type="button" class="link paste-toggle">or paste text</button>
+          <button type="button" class="link clear-file" hidden>× remove</button>
+        </div>
         <textarea class="paste" hidden placeholder="Paste text here…"></textarea>
         <div class="meta">
           <label>Language <select class="lang"></select></label>
@@ -90,7 +93,7 @@
     <p class="sample">Try a public-domain book: <em>Alice’s Adventures in Wonderland</em> in
       <button type="button" class="link" data-sample="en,fr">English &amp; French</button> or
       <button type="button" class="link" data-sample="en,fr,de">English, French &amp; German</button></p>
-    <p class="fine formats">Accepts PDF, EPUB, DOCX, HTML, FB2, Markdown, SRT and plain text.</p>
+    <p class="fine formats">Accepts PDF, EPUB, DOCX, HTML, FB2, Markdown, SRT and plain text. <button type="button" class="link" id="setup-help">New here? Take the tour.</button></p>
   </main>
 
   <div id="reader" class="reader" hidden>
@@ -104,6 +107,7 @@
         <button id="rotate" class="tool" title="Move the first column to the end">⇄</button>
         <span id="col-toggles" class="col-toggles" title="Show or hide a language"></span>
         <label class="gloss-pick" title="Language for hover glosses">Gloss <select id="gloss-lang" class="tool"></select></label>
+        <button id="help" class="tool" title="How to use Pamphleteer">?</button>
         <button id="download" class="tool" title="Save as a web page">HTML</button>
         <button id="pdf" class="tool" title="Save the whole parallel text as a PDF">PDF</button>
       </span>
@@ -114,6 +118,7 @@
       </div>
       <div id="progress" class="progress"></div>
     </nav>
+    <aside id="notice" class="notice" role="alert" hidden></aside>
     <article id="pages" class="pages"></article>
     <div id="sentinel" class="sentinel"></div>
     <nav class="pager pager-foot" hidden>

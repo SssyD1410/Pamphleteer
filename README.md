@@ -8,6 +8,9 @@ Pamphleteer lays a book or article beside its translations. Upload the same work
 
 ## How it works
 
+- **First visit:** a short guided tour of the start page, and another the first time the reader opens. Replay it with *New here? Take the tour* or the **?** button.
+- **Mismatch warning:** after collaging, Pamphleteer checks that the texts really are the same work. It looks at how well paired paragraph lengths correspond, how long each text is, whether the chapters line up, and whether two columns are set to the same language. If something looks off, it says so in plain words above the text. In tests on *Alice* in English, French and German, matching translations misfit by 1–2%; a different book, shuffled paragraphs or half a book misfit by 16–38%. The warning appears above 8%.
+- **× remove** next to an upload clears that side.
 - **Nothing is uploaded.** Files are read in the browser. It's a static site with no server and no build step.
 - **Formats:** PDF, EPUB, DOCX, HTML, FB2, Markdown, SRT and plain text. Each side can use a different format, and you can paste text instead.
 - **Cheap on big books.** Parsers load only when a format needs them (pdf.js, JSZip, mammoth). Alignment is two cheap passes:
@@ -54,6 +57,7 @@ js/align.js       chapter matching + paragraph alignment
 js/translate.js   short-text and single-word translation
 js/dict.js        hover gloss + Wiktionary dictionary panel
 js/sentences.js   hovered-sentence underline across columns
+js/tour.js        first-visit guided tour
 js/app.js         upload UI and the scrolling reader
 assets/           favicons and social images
 samples/          public-domain test texts

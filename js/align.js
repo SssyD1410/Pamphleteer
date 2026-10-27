@@ -191,11 +191,36 @@ export function alignUnits(A, B) {
 // For translated text the pairing is exact: one translated paragraph per source paragraph.
 export const pairOneToOne = (L, R) => ({ rows: L.map((p, k) => [[p], [R[k]]]), chapters: 0 });
 
+// How well two texts fit as translations of each other, judged from the alignment:
+// in real translations, paired rows have lengths in about the same proportion as the
+// whole texts. Measured on Alice EN/FR/DE, 1–2% of the text misfits; a different book,
+// shuffled paragraphs or half a book misfit 16–38%.
+const charsOf = (ps) => ps.reduce((s, p) => s + p.t.length, 0);
+export function matchReport(L, R, rows, chapters) {
+  const c = charsOf(R) / Math.max(1, charsOf(L));
+  let misfit = 0, total = 0;
+  for (const [a, b] of rows) {
+    const x = charsOf(a) + 20, y = charsOf(b) + 20;
+    total += x + y;
+    if (Math.abs(Math.log(y / (x * c))) > Math.LN2) misfit += x + y;
+  }
+  const share = misfit / Math.max(1, total);
+  const reasons = [];
+  if (c > 1.7 || c < 0.6) reasons.push({ kind: 'length', ratio: c });
+  if (share > 0.08) reasons.push({ kind: 'fit', share });
+  const headings = (ps) => ps.filter((p) => p.h).length;
+  if (!chapters && headings(L) >= 3 && headings(R) >= 3) reasons.push({ kind: 'chapters' });
+  return { share, ratio: c, reasons };
+}
+
 // Three or four texts: align each one to the first (the pivot), then cut rows only where
 // every alignment allows a break in the pivot, so all columns stay in step.
 export function collageMany(pivot, others) {
+  const reports = [];
   const maps = others.map(({ paras, exact }) => {
-    const { rows } = exact ? pairOneToOne(pivot, paras) : collage(pivot, paras);
+    const result = exact ? pairOneToOne(pivot, paras) : collage(pivot, paras);
+    const { rows } = result;
+    reports.push(exact ? null : matchReport(pivot, paras, rows, result.chapters));
     const cuts = new Set();
     const pieces = []; // [pivotStart, paragraphs of this text]
     let p = 0;
@@ -224,5 +249,5 @@ export function collageMany(pivot, others) {
     rows.push(row);
     start = end;
   }
-  return { rows };
+  return { rows, reports };
 }
